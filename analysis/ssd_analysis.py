@@ -40,7 +40,7 @@ from data.load_ecotox import load_ecotox_data
 TARGET_CAS = "14437-17-3"  # Chlorfenprop-methyl (high uncertainty)
 
 DURATION_HOURS = 48
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "ssd_analysis"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 # Global variable to store the chemical name (set after data loading)

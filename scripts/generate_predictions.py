@@ -11,10 +11,15 @@ Outputs to outputs/models/:
 - full_predictions.parquet: Predictions for all triplets
 
 Usage:
-    python scripts/generate_predictions.py
+    python scripts/generate_predictions.py [--n_iter N] [--n_burn N]
+
+Arguments:
+    --n_iter    Number of Gibbs sampling iterations (default: 200)
+    --n_burn    Number of burn-in iterations (default: 100)
 """
 
 import sys
+import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -44,9 +49,24 @@ def make_design_cats(df: pd.DataFrame, enc_dict: dict) -> sp.csr_matrix:
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Generate full predictions for all (chemical, species, duration) triplets"
+    )
+    parser.add_argument(
+        "--n_iter", type=int, default=200,
+        help="Number of Gibbs sampling iterations (default: 200)"
+    )
+    parser.add_argument(
+        "--n_burn", type=int, default=100,
+        help="Number of burn-in iterations (default: 100)"
+    )
+    args = parser.parse_args()
+    
     print("=" * 60)
     print("GENERATING FULL PREDICTIONS (Memory-Efficient)")
     print("=" * 60)
+    print(f"  Iterations: {args.n_iter}, Burn-in: {args.n_burn}")
     
     # 1. Load Data (same as train_bfm.py)
     print("\n1. Loading data...")
@@ -102,10 +122,10 @@ def main():
 
     # 5. Train model on full dataset
     print("\n4. Training model on full dataset...")
-    print("   (k=32, n_iter=200, n_burn=100)")
+    print(f"   (k=32, n_iter={args.n_iter}, n_burn={args.n_burn})")
     
     model = HierarchicalBFM(n_features=X_train.shape[1], n_groups=n_groups, k=32)
-    model.fit(X_train, y_train, groups=groups, n_iter=200, n_burn=100)
+    model.fit(X_train, y_train, groups=groups, n_iter=args.n_iter, n_burn=args.n_burn)
     
     print(f"   Collected {len(model.samples)} posterior samples")
 

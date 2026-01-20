@@ -44,14 +44,6 @@ hierarchical-bfm-paper/
 
 ### Requirements
 
-- Python 3.10+
-- NumPy, SciPy, Pandas
-- Matplotlib, Seaborn
-- scikit-learn
-- tqdm
-- joblib
-- pyarrow (for parquet support)
-
 Install dependencies:
 
 ```bash
@@ -65,17 +57,23 @@ Place the following files in `data/raw/`:
 1. `ecotox_mortality_processed.csv` - Ecotoxicology mortality data
 2. `ecotox_properties_with-oecd-function.csv` - Chemical properties
 
-These files are not included in the repository due to size. Contact the authors for data access.
+The data comes from the authors of the ADORE dataset, and the files can be found here: https://gitlab.renkulab.io/mltox/adore , specifically in data/processed for the mortality data, and in the chemicals folder for the properties data. 
+
 
 ## Usage
 
 ### 1. Train the Model (Cross-Validation)
 
-Trains the hierarchical BFM with 3-fold cross-validation and saves out-of-fold predictions:
+Trains the hierarchical BFM with k-fold cross-validation and saves out-of-fold predictions:
 
 ```bash
 python scripts/train_bfm.py
 ```
+It supports the following CLI args:
+
+- `--n_folds`: Number of cross-validation folds (default: 3)
+- `--n_iter`: Number of Gibbs sampling iterations (default: 200)
+- `--n_burn`: Number of burn-in iterations (default: 100)
 
 **Outputs to `outputs/models/`:**
 - `oof_mean.npy` - Mean predictions
@@ -89,6 +87,7 @@ Trains on full dataset and generates predictions for all (chemical, species, dur
 ```bash
 python scripts/generate_predictions.py
 ```
+Supports --n_iter and --n_burn in cli.
 
 **Outputs to `outputs/models/`:**
 - `trained_model.pkl` - Trained model (~130MB)
@@ -118,17 +117,6 @@ python analysis/compare_hc5.py
 - `hc5_correlation_48h.png`
 - `hc5_comparison_48h.csv`
 
-## Pre-computed Outputs
-
-If you have access to pre-computed model outputs, place them in `outputs/models/`:
-
-- `oof_mean.npy`
-- `oof_epistemic.npy`
-- `oof_aleatoric.npy`
-- `full_predictions.parquet`
-- `trained_model.pkl` (optional)
-
-This allows running analysis scripts without retraining.
 
 ## Model Details
 
@@ -145,15 +133,6 @@ Key features:
 ## Citation
 
 If you use this code, please cite:
-
-```bibtex
-@article{hierarchical-bfm-2025,
-  title={Hierarchical Bayesian Factorization Machines for Ecotoxicology Prediction with Uncertainty Quantification},
-  author={...},
-  journal={...},
-  year={2025}
-}
-```
 
 ## License
 

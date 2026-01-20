@@ -32,7 +32,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
 
 # Output directory for plots
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "analyze_results"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 from data.load_ecotox import load_ecotox_data

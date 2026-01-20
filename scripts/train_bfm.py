@@ -1,7 +1,7 @@
 """
 train_bfm.py - Train Hierarchical BFM with Cross-Validation
 
-This script trains the Hierarchical Bayesian Factorization Machine using 3-fold
+This script trains the Hierarchical Bayesian Factorization Machine using k-fold
 cross-validation and saves out-of-fold predictions with uncertainty estimates.
 
 Outputs to outputs/models/:
@@ -10,10 +10,16 @@ Outputs to outputs/models/:
 - oof_aleatoric.npy: Out-of-fold aleatoric variance
 
 Usage:
-    python scripts/train_bfm.py
+    python scripts/train_bfm.py [--n_folds N] [--n_iter N] [--n_burn N]
+
+Arguments:
+    --n_folds   Number of cross-validation folds (default: 3)
+    --n_iter    Number of Gibbs sampling iterations (default: 200)
+    --n_burn    Number of burn-in iterations (default: 100)
 """
 
 import sys
+import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -45,7 +51,26 @@ def make_design_cats(df: pd.DataFrame, enc_dict: dict) -> sp.csr_matrix:
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Train Hierarchical BFM with Cross-Validation"
+    )
+    parser.add_argument(
+        "--n_folds", type=int, default=3,
+        help="Number of cross-validation folds (default: 3)"
+    )
+    parser.add_argument(
+        "--n_iter", type=int, default=200,
+        help="Number of Gibbs sampling iterations (default: 200)"
+    )
+    parser.add_argument(
+        "--n_burn", type=int, default=100,
+        help="Number of burn-in iterations (default: 100)"
+    )
+    args = parser.parse_args()
+    
     print("Running Hierarchical BFM Experiment...")
+    print(f"  Folds: {args.n_folds}, Iterations: {args.n_iter}, Burn-in: {args.n_burn}")
     
     # 1. Load Data (using mg/L units for interpretability)
     DATA_DIR = ROOT_DIR / "data" / "raw"
@@ -90,7 +115,7 @@ def main():
         full_data["species"].astype(str) + "_" +
         full_data["duration"].astype(str)
     )[0]
-    gkf = sk_model.GroupKFold(n_splits=3)
+    gkf = sk_model.GroupKFold(n_splits=args.n_folds)
     splits = list(gkf.split(full_data, y_centered, groups=triplet_id))
 
     # 5. CV Loop
@@ -102,7 +127,8 @@ def main():
     cas_alpha_samples = {cas: [] for cas in unique_cas}
 
     for fold, (tr_idx, va_idx) in enumerate(splits):
-        print(f"\nFold {fold+1}/3")
+        print(f"\nFold {fold+1}/{args.n_folds}")
+
         
         df_tr, df_va = full_data.iloc[tr_idx], full_data.iloc[va_idx]
         y_tr, y_va   = y_centered[tr_idx], y_centered[va_idx]
@@ -123,7 +149,7 @@ def main():
         
         # Train Hierarchical BFM
         model = HierarchicalBFM(n_features=X_tr.shape[1], n_groups=n_groups, k=32)
-        model.fit(X_tr, y_tr, groups=groups_tr, n_iter=200, n_burn=100)
+        model.fit(X_tr, y_tr, groups=groups_tr, n_iter=args.n_iter, n_burn=args.n_burn)
         
         # Predict
         X2_va = X_va.copy(); X2_va.data **= 2

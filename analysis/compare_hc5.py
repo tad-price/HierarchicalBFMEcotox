@@ -34,7 +34,7 @@ from data.load_ecotox import load_ecotox_data
 DURATION_HOURS = 48
 MIN_SPECIES_TRADITIONAL = 5  # Minimum species required for traditional HC5
 N_MC_SAMPLES = 1000
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "compare_hc5"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 
