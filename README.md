@@ -117,6 +117,7 @@ python analysis/compare_hc5.py
 - `hc5_correlation_48h.png`
 - `hc5_comparison_48h.csv`
 
+Some non-image data is also output in the terminal directly. 
 
 ## Model Details
 

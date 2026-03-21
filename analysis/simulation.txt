@@ -1,0 +1,170 @@
+import numpy as np
+from scipy.stats import norm
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import matplotlib.pyplot as plt
+
+def generate_synthetic_ecosystem(n_chemicals=400, n_species=200, n_factors=3, seed=42):
+    """
+    Generates a dense 'Ground Truth' toxicity matrix based on latent biological factors.
+    """
+    np.random.seed(seed)
+    
+    # 1. Latent factors (Mechanisms of action & Species traits)
+    U_true = np.random.normal(0, 1.0, size=(n_chemicals, n_factors))
+    V_true = np.random.normal(0, 1.0, size=(n_species, n_factors))
+    
+    # 2. Biases (Inherent chemical toxicity & Inherent species sensitivity)
+    chem_bias = np.random.normal(0, 1.5, size=(n_chemicals, 1))
+    spec_bias = np.random.normal(0, 1.0, size=(1, n_species))
+    global_mean = 2.0
+    
+    # 3. Dense True Ecosystem (Log mg/L)
+    Y_true = global_mean + chem_bias + spec_bias + (U_true @ V_true.T)
+    
+    # Add small aleatoric noise
+    Y_noisy = Y_true + np.random.normal(0, 0.5, size=(n_chemicals, n_species))
+    
+    # 4. Calculate True HC5 (5th percentile across all species for each chemical)
+    true_hc5 = np.percentile(Y_true, 5, axis=1)
+    
+    return Y_noisy, true_hc5
+
+def apply_realistic_mask(Y, target_sparsity=0.05):
+    """
+    Simulates the ecotox dataset's bias: a few standard species/chemicals are tested heavily, 
+    while most are rarely tested (Power Law/Pareto distribution).
+    """
+    n_chemicals, n_species = Y.shape
+    
+    # Generate power-law probabilities to mimic rank-frequency plots
+    p_chem = np.random.pareto(a=2.0, size=n_chemicals)
+    p_spec = np.random.pareto(a=2.0, size=n_species)
+    
+    # Normalize
+    p_chem /= p_chem.sum()
+    p_spec /= p_spec.sum()
+    
+    # Outer product for observation probability matrix
+    prob_matrix = np.outer(p_chem, p_spec)
+    
+    # Scale to achieve target density (e.g., 5% filled)
+    prob_matrix = prob_matrix * (target_sparsity / prob_matrix.mean())
+    prob_matrix = np.clip(prob_matrix, 0, 1)
+    
+    # Apply mask
+    mask = np.random.binomial(1, prob_matrix).astype(bool)
+    Y_sparse = np.full_like(Y, np.nan)
+    Y_sparse[mask] = Y[mask]
+    
+    return Y_sparse, mask
+
+def traditional_ssd_hc5(Y_sparse, min_observations=5):
+    """
+    Fits a normal distribution (since data is log-transformed) to observed 
+    points row-wise to find the HC5.
+    """
+    n_chemicals = Y_sparse.shape[0]
+    trad_hc5 = np.full(n_chemicals, np.nan)
+    
+    for c in range(n_chemicals):
+        obs = Y_sparse[c, ~np.isnan(Y_sparse[c, :])]
+        if len(obs) >= min_observations:
+            mu, std = norm.fit(obs)
+            trad_hc5[c] = norm.ppf(0.05, loc=mu, scale=std)
+            
+    return trad_hc5
+
+def matrix_factorization_als(Y_sparse, mask, n_factors=3, iterations=50, reg=0.1):
+    """
+    Completes the sparse matrix using Alternating Least Squares (ALS)
+    with explicit bias terms: Y ≈ μ + b_chem + b_spec + U @ V.T
+    
+    This matches the structure of the data-generating process, which
+    includes a global mean, per-chemical biases, and per-species biases
+    in addition to the low-rank interaction term.
+    """
+    n_chemicals, n_species = Y_sparse.shape
+    
+    # Initialize biases
+    # Global mean: average of all observed values
+    global_mean = np.nanmean(Y_sparse)
+    chem_bias = np.zeros(n_chemicals)
+    spec_bias = np.zeros(n_species)
+    
+    # Initialize factors randomly
+    U = np.random.normal(0, 0.1, size=(n_chemicals, n_factors))
+    V = np.random.normal(0, 0.1, size=(n_species, n_factors))
+    
+    for iteration in range(iterations):
+        # --- Update biases ---
+        # Chemical bias: mean residual per chemical (after removing global mean + spec_bias + U@V.T)
+        for c in range(n_chemicals):
+            mask_c = mask[c, :]
+            if not np.any(mask_c): continue
+            residuals = Y_sparse[c, mask_c] - global_mean - spec_bias[mask_c] - U[c, :] @ V[mask_c, :].T
+            chem_bias[c] = residuals.mean()
+        
+        # Species bias: mean residual per species (after removing global mean + chem_bias + U@V.T)
+        for s in range(n_species):
+            mask_s = mask[:, s]
+            if not np.any(mask_s): continue
+            residuals = Y_sparse[mask_s, s] - global_mean - chem_bias[mask_s] - U[mask_s, :] @ V[s, :]
+            spec_bias[s] = residuals.mean()
+        
+        # --- Update latent factors ---
+        # Update U (Chemical factors) - regress residuals (after bias removal) onto V
+        for c in range(n_chemicals):
+            mask_c = mask[c, :]
+            if not np.any(mask_c): continue
+            
+            V_obs = V[mask_c, :]
+            Y_resid = Y_sparse[c, mask_c] - global_mean - chem_bias[c] - spec_bias[mask_c]
+            
+            U[c, :] = np.linalg.solve(V_obs.T @ V_obs + reg * np.eye(n_factors), V_obs.T @ Y_resid)
+            
+        # Update V (Species factors) - regress residuals (after bias removal) onto U
+        for s in range(n_species):
+            mask_s = mask[:, s]
+            if not np.any(mask_s): continue
+            
+            U_obs = U[mask_s, :]
+            Y_resid = Y_sparse[mask_s, s] - global_mean - chem_bias[mask_s] - spec_bias[s]
+            
+            V[s, :] = np.linalg.solve(U_obs.T @ U_obs + reg * np.eye(n_factors), U_obs.T @ Y_resid)
+            
+    # Predict the full ecosystem: μ + b_chem + b_spec + U @ V.T
+    Y_pred = global_mean + chem_bias[:, None] + spec_bias[None, :] + U @ V.T
+    return Y_pred
+
+# ==========================================
+# Run the Simulation
+# ==========================================
+
+# 1. Generate Universe
+Y_noisy, true_hc5 = generate_synthetic_ecosystem()
+
+# 2. Mask data (leave ~5% visible)
+Y_sparse, mask = apply_realistic_mask(Y_noisy, target_sparsity=0.05)
+
+# 3. Predict HC5 using Traditional Curve Fitting
+trad_hc5 = traditional_ssd_hc5(Y_sparse)
+
+# 4. Predict HC5 using Matrix Factorization
+Y_mf_completed = matrix_factorization_als(Y_sparse, mask)
+mf_hc5 = np.percentile(Y_mf_completed, 5, axis=1)
+
+# ==========================================
+# Evaluation
+# ==========================================
+# Only compare chemicals where the Traditional SSD had enough data to fit a curve
+valid_idx = ~np.isnan(trad_hc5)
+
+rmse_trad = mean_squared_error(true_hc5[valid_idx], trad_hc5[valid_idx], squared=False)
+rmse_mf = mean_squared_error(true_hc5[valid_idx], mf_hc5[valid_idx], squared=False)
+
+mae_trad = mean_absolute_error(true_hc5[valid_idx], trad_hc5[valid_idx])
+mae_mf = mean_absolute_error(true_hc5[valid_idx], mf_hc5[valid_idx])
+
+print(f"Evaluation on {valid_idx.sum()} chemicals with sufficient data:")
+print(f"Traditional SSD - RMSE: {rmse_trad:.3f} | MAE: {mae_trad:.3f}")
+print(f"Matrix Factorization - RMSE: {rmse_mf:.3f} | MAE: {mae_mf:.3f}")

@@ -4,7 +4,10 @@ ssd_analysis.py - Species Sensitivity Distribution Analysis
 This script generates:
 1. Traditional SSD: Lognormal fit to observed toxicity values
 2. Novel SSD: Scatter model predictions for all species (target chemical/duration)
-3. Uncertainty SSD: Monte Carlo sampling with chemical-specific uncertainty bands
+3. Novel SSD with uncertainty bars: Decomposed epistemic/aleatoric error bars
+4. Combined comparison: Traditional vs novel SSD on same axes
+
+For MCMC posterior uncertainty analysis, see ssd_mc_uncertainty.py.
 
 Change the TARGET_CAS below to analyze different chemicals.
 
@@ -12,7 +15,7 @@ Requires:
 - outputs/models/full_predictions.parquet
 
 Outputs figures to:
-- outputs/figures/
+- outputs/figures/ssd_analysis/
 
 Usage:
     python analysis/ssd_analysis.py
@@ -37,7 +40,9 @@ from data.load_ecotox import load_ecotox_data
 # =============================================================================
 #TARGET_CAS = "1912-24-9"  # Atrazine (well-tested, lower uncertainty)
 
-TARGET_CAS = "14437-17-3"  # Chlorfenprop-methyl (high uncertainty)
+TARGET_CAS = "1912-24-9"  # Atrazine (well-tested, lower uncertainty)
+
+#TARGET_CAS = "14437-17-3"  # Chlorfenprop-methyl (high uncertainty)
 
 DURATION_HOURS = 48
 OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "ssd_analysis"
@@ -327,167 +332,6 @@ def plot_novel_ssd_with_uncertainty(pred_df, z_score=1.96):
     plt.close()
 
 
-# =============================================================================
-# SSD WITH UNCERTAINTY BANDS (Monte Carlo)
-# =============================================================================
-
-def plot_ssd_with_uncertainty(pred_df, n_samples=1000, seed=42):
-    """
-    Generate an SSD with uncertainty bands using Monte Carlo sampling.
-    
-    Methodology:
-    - For each species, we have a predictive distribution: N(pred_mean, pred_total_sd)
-    - For each Monte Carlo iteration:
-        1. Sample one toxicity value per species from its predictive distribution
-        2. Sort and compute the empirical CDF
-    - Aggregate across iterations to get median + credible intervals
-    
-    Args:
-        pred_df: Predictions for target chemical (one row per species)
-        n_samples: Number of Monte Carlo samples
-        seed: Random seed for reproducibility
-    """
-    print("\n" + "="*60)
-    print(f"SSD WITH UNCERTAINTY BANDS ({n_samples} Monte Carlo samples)")
-    print("="*60)
-    
-    np.random.seed(seed)
-    
-    n_species = len(pred_df)
-    print(f"Using {n_species} species with uncertainty estimates")
-    
-    # Extract arrays - use ALEATORIC SD only (not epistemic)
-    means = pred_df["pred_mean"].values
-    aleatoric_sd = np.sqrt(pred_df["pred_aleatoric_var"].values)
-    
-    print(f"Mean prediction range: [{means.min():.2f}, {means.max():.2f}]")
-    print(f"Aleatoric SD (same for all species): {aleatoric_sd[0]:.3f}")
-    
-    # Monte Carlo sampling
-    # Shape: (n_samples, n_species)
-    samples = np.random.normal(
-        loc=means[np.newaxis, :],
-        scale=aleatoric_sd[np.newaxis, :],
-        size=(n_samples, n_species)
-    )
-    
-    # Sort each sample to get the SSD curve for that iteration
-    sorted_samples = np.sort(samples, axis=1)
-    
-    # Compute quantiles across Monte Carlo samples at each rank
-    median_curve = np.percentile(sorted_samples, 50, axis=0)
-    lower_95 = np.percentile(sorted_samples, 2.5, axis=0)
-    upper_95 = np.percentile(sorted_samples, 97.5, axis=0)
-    
-    # Empirical CDF y-values
-    y_cdf = np.arange(1, n_species + 1) / (n_species + 1)
-    
-    # Point estimate (no uncertainty)
-    point_estimate = np.sort(means)
-    
-    # Plot
-    plt.figure(figsize=(12, 8))
-    
-    # 95% credible interval
-    plt.fill_betweenx(y_cdf, lower_95, upper_95, alpha=0.3, color='blue', 
-                       label='95% Credible Interval')
-    
-    # Median curve
-    plt.plot(median_curve, y_cdf, 'b-', linewidth=2, label='Median SSD')
-    
-    # Point estimate
-    plt.plot(point_estimate, y_cdf, 'k--', linewidth=1.5, alpha=0.7, 
-             label='Point Estimate (no uncertainty)')
-    
-    plt.xlabel("Predicted Toxicity (Log mg/L)", fontsize=12)
-    plt.ylabel("Fraction of Species Affected", fontsize=12)
-    plt.title(f"SSD with Uncertainty: {CHEMICAL_NAME} at {DURATION_HOURS}h\n"
-              f"(N={n_species} species, {n_samples} MC samples)", fontsize=14)
-    plt.legend(loc='lower right', fontsize=10)
-    plt.grid(True, alpha=0.3)
-    plt.ylim(0, 1)
-    
-    safe_name = CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
-    safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
-    output_path = OUTPUT_DIR / f"ssd_uncertainty_{safe_name}_{DURATION_HOURS}h.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved: {output_path}")
-    plt.close()
-    
-    # HC5 results
-    print(f"\n{'='*60}")
-    print("HC5 RESULTS (5% of species affected)")
-    print(f"{'='*60}")
-    
-    idx_hc5 = int(0.05 * n_species)
-    hc5_median = median_curve[idx_hc5]
-    hc5_lower = lower_95[idx_hc5]
-    hc5_upper = upper_95[idx_hc5]
-    hc5_width = hc5_upper - hc5_lower
-    
-    print(f"\n{'Metric':<20} {'Log mg/L':<15} {'mg/L':<15}")
-    print(f"{'-'*50}")
-    print(f"{'HC5 Median':<20} {hc5_median:<15.3f} {np.exp(hc5_median):<15.6f}")
-    print(f"{'HC5 Lower (2.5%)':<20} {hc5_lower:<15.3f} {np.exp(hc5_lower):<15.6f}")
-    print(f"{'HC5 Upper (97.5%)':<20} {hc5_upper:<15.3f} {np.exp(hc5_upper):<15.6f}")
-    print(f"{'-'*50}")
-    print(f"{'95% CI Width':<20} {hc5_width:<15.3f}")
-    
-    return hc5_median, hc5_lower, hc5_upper
-
-
-# =============================================================================
-# COMBINED PLOT
-# =============================================================================
-
-def plot_combined(df_obs, pred_df, hc5_traditional, hc5_model):
-    """Plot traditional and model SSDs on same axis for comparison."""
-    print("\n" + "="*60)
-    print("COMBINED PLOT: Traditional vs Model SSD")
-    print("="*60)
-    
-    # Traditional SSD data
-    species_tox = df_obs.groupby("species", observed=True)["y_true"].mean().reset_index()
-    species_tox = species_tox.dropna()
-    n_trad = len(species_tox)
-    sorted_tox = np.sort(species_tox["y_true"].values)
-    y_cdf_trad = np.arange(1, n_trad + 1) / (n_trad + 1)
-    
-    # Model SSD data
-    n_model = len(pred_df)
-    sorted_pred = np.sort(pred_df["pred_mean"].values)
-    y_cdf_model = np.arange(1, n_model + 1) / (n_model + 1)
-    
-    # Plot
-    plt.figure(figsize=(12, 8))
-    
-    # Model predictions (all species)
-    plt.scatter(sorted_pred, y_cdf_model, c='blue', s=10, alpha=0.5, 
-                label=f'Model Predictions (N={n_model})')
-    
-    # Traditional observations
-    plt.scatter(sorted_tox, y_cdf_trad, c='red', s=60, zorder=5, edgecolors='darkred',
-                label=f'Observed (N={n_trad})')
-    
-    # HC5 lines
-    plt.axvline(hc5_traditional, color='red', linestyle='--', linewidth=1.5,
-                label=f'Traditional HC5 = {hc5_traditional:.2f}')
-    plt.axvline(hc5_model, color='blue', linestyle='--', linewidth=1.5,
-                label=f'Model HC5 = {hc5_model:.2f}')
-    
-    plt.xlabel("Toxicity (Log mg/L)", fontsize=12)
-    plt.ylabel("Fraction of Species Affected", fontsize=12)
-    plt.title(f"SSD Comparison: {CHEMICAL_NAME} at {DURATION_HOURS}h", fontsize=14)
-    plt.legend(loc='lower right', fontsize=10)
-    plt.grid(True, alpha=0.3)
-    plt.ylim(0, 1)
-    
-    safe_name = CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
-    safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
-    output_path = OUTPUT_DIR / f"ssd_combined_{safe_name}_{DURATION_HOURS}h.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved: {output_path}")
-    plt.close()
 
 
 def plot_traditional_vs_novel_ssd(df_obs, pred_df):
@@ -618,9 +462,7 @@ def main():
     hc5_traditional = plot_traditional_ssd(df_obs_filtered)
     plot_novel_ssd(pred_df_filtered)
     plot_novel_ssd_with_uncertainty(pred_df_filtered)
-    hc5_model, hc5_lower, hc5_upper = plot_ssd_with_uncertainty(pred_df_filtered)
-    plot_combined(df_obs_filtered, pred_df_filtered, hc5_traditional, hc5_model)
-    plot_traditional_vs_novel_ssd(df_obs_filtered, pred_df_filtered)
+    hc5_traditional_2, hc5_novel = plot_traditional_vs_novel_ssd(df_obs_filtered, pred_df_filtered)
     
     # Summary
     print("\n" + "="*60)
@@ -632,9 +474,8 @@ def main():
     print(f"Predicted species: {len(pred_df_filtered)}")
     print(f"\nHC5 Comparison:")
     print(f"  Traditional: {hc5_traditional:.3f} ({np.exp(hc5_traditional):.6f} mg/L)")
-    print(f"  Model:       {hc5_model:.3f} ({np.exp(hc5_model):.6f} mg/L)")
-    print(f"  Model 95% CI: [{hc5_lower:.3f}, {hc5_upper:.3f}]")
-    print(f"  Model CI Width: {hc5_upper - hc5_lower:.3f}")
+    print(f"  Novel:       {hc5_novel:.3f} ({np.exp(hc5_novel):.6f} mg/L)")
+    print(f"\nFor MCMC uncertainty analysis, run: python analysis/ssd_mc_uncertainty.py")
     
     print("\n" + "="*60)
     print("COMPLETE")
