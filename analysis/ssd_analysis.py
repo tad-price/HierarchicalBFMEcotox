@@ -9,8 +9,6 @@ This script generates:
 
 For MCMC posterior uncertainty analysis, see ssd_mc_uncertainty.py.
 
-Change the TARGET_CAS below to analyze different chemicals.
-
 Requires:
 - outputs/models/full_predictions.parquet
 
@@ -18,7 +16,8 @@ Outputs figures to:
 - outputs/figures/ssd_analysis/
 
 Usage:
-    python analysis/ssd_analysis.py
+    python analysis/ssd_analysis.py --cas 1912-24-9
+    python analysis/ssd_analysis.py --cas 14437-17-3
 """
 
 import sys
@@ -36,20 +35,22 @@ from data.load_ecotox import load_ecotox_data
 
 
 # =============================================================================
-# CONFIGURATION - Change these values to analyze different chemicals
+# CONFIGURATION
 # =============================================================================
-#TARGET_CAS = "1912-24-9"  # Atrazine (well-tested, lower uncertainty)
-
-TARGET_CAS = "1912-24-9"  # Atrazine (well-tested, lower uncertainty)
-
-#TARGET_CAS = "14437-17-3"  # Chlorfenprop-methyl (high uncertainty)
-
 DURATION_HOURS = 48
 OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "ssd_analysis"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
-# Global variable to store the chemical name (set after data loading)
+# These are set by parse_args() or set_target() before any analysis runs.
+TARGET_CAS = None
 CHEMICAL_NAME = None
+
+
+def set_target(cas, name=None):
+    """Set the target chemical for this module (used by ssd_mc_uncertainty.py too)."""
+    global TARGET_CAS, CHEMICAL_NAME
+    TARGET_CAS = cas
+    CHEMICAL_NAME = name
 
 
 def load_observations():
@@ -104,18 +105,19 @@ def get_chemical_name(df, cas_number):
 def filter_observations(df_obs):
     """Filter observations to target chemical at specified duration."""
     global CHEMICAL_NAME
-    
-    CHEMICAL_NAME = get_chemical_name(df_obs, TARGET_CAS)
-    
-    df_filtered = df_obs[(df_obs["CAS"] == TARGET_CAS) & 
+
+    if CHEMICAL_NAME is None:
+        CHEMICAL_NAME = get_chemical_name(df_obs, TARGET_CAS)
+
+    df_filtered = df_obs[(df_obs["CAS"] == TARGET_CAS) &
                          (df_obs["duration"].astype(int) == DURATION_HOURS)].copy()
-    
+
     n_obs = len(df_filtered)
     n_species = df_filtered["species"].nunique()
     print(f"\nFiltered observations to {CHEMICAL_NAME} (CAS {TARGET_CAS}) at {DURATION_HOURS}h:")
     print(f"   Observations: {n_obs}")
     print(f"   Unique species: {n_species}")
-    
+
     return df_filtered
 
 
@@ -436,34 +438,47 @@ def plot_traditional_vs_novel_ssd(df_obs, pred_df):
 # MAIN
 # =============================================================================
 
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description="Species Sensitivity Distribution Analysis")
+    parser.add_argument("--cas", type=str, default="1912-24-9",
+                        help="CAS number of target chemical (default: 1912-24-9 = Atrazine)")
+    parser.add_argument("--name", type=str, default=None,
+                        help="Chemical name (auto-detected from data if not provided)")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    set_target(args.cas, args.name)
+
     print("="*60)
     print(f"SPECIES SENSITIVITY DISTRIBUTION ANALYSIS")
     print(f"Target: CAS {TARGET_CAS} at {DURATION_HOURS}h")
     print("="*60)
-    
+
     # Load data
     df_obs = load_observations()
     pred_df = load_full_predictions()
-    
+
     # Filter to target chemical
     df_obs_filtered = filter_observations(df_obs)
     pred_df_filtered = filter_predictions(pred_df)
-    
+
     if len(df_obs_filtered) == 0:
         print("ERROR: No observations for the specified chemical and duration!")
         sys.exit(1)
-    
+
     if len(pred_df_filtered) == 0:
         print("ERROR: No predictions for the specified chemical and duration!")
         sys.exit(1)
-    
+
     # Generate plots
     hc5_traditional = plot_traditional_ssd(df_obs_filtered)
     plot_novel_ssd(pred_df_filtered)
     plot_novel_ssd_with_uncertainty(pred_df_filtered)
     hc5_traditional_2, hc5_novel = plot_traditional_vs_novel_ssd(df_obs_filtered, pred_df_filtered)
-    
+
     # Summary
     print("\n" + "="*60)
     print("SUMMARY")
@@ -476,7 +491,7 @@ def main():
     print(f"  Traditional: {hc5_traditional:.3f} ({np.exp(hc5_traditional):.6f} mg/L)")
     print(f"  Novel:       {hc5_novel:.3f} ({np.exp(hc5_novel):.6f} mg/L)")
     print(f"\nFor MCMC uncertainty analysis, run: python analysis/ssd_mc_uncertainty.py")
-    
+
     print("\n" + "="*60)
     print("COMPLETE")
     print("="*60)

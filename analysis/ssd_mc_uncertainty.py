@@ -9,8 +9,6 @@ this approach preserves the correlation structure between species predictions:
 each posterior sample produces a complete, internally consistent set of predictions
 for all species, so the resulting SSD curves properly capture epistemic uncertainty.
 
-Change the TARGET_CAS in ssd_analysis.py to analyze different chemicals.
-
 Requires:
 - outputs/models/trained_model.pkl
 - outputs/models/full_predictions.parquet
@@ -19,7 +17,9 @@ Outputs figures to:
 - outputs/figures/ssd_analysis/
 
 Usage:
-    python analysis/ssd_mc_uncertainty.py
+    python analysis/ssd_mc_uncertainty.py --cas 1912-24-9
+    python analysis/ssd_mc_uncertainty.py --cas 14437-17-3
+    python analysis/ssd_mc_uncertainty.py --all-hcx --percentiles 20
 """
 
 import sys
@@ -35,13 +35,14 @@ from scipy.stats import norm
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
 
-# Import shared config and utilities from ssd_analysis
+# Import shared utilities from ssd_analysis (not config — we set our own via set_target)
 from ssd_analysis import (
-    TARGET_CAS, DURATION_HOURS, OUTPUT_DIR, ROOT_DIR,
+    DURATION_HOURS, OUTPUT_DIR,
     load_observations, load_full_predictions,
     filter_observations, filter_predictions,
-    CHEMICAL_NAME,
+    set_target,
 )
+import ssd_analysis
 
 
 # =============================================================================
@@ -72,9 +73,6 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
         include_aleatoric: Whether to add aleatoric noise draws (default False)
         seed: Random seed for reproducibility
     """
-    # Import CHEMICAL_NAME as a global (set by filter_observations)
-    from ssd_analysis import CHEMICAL_NAME
-    
     print("\n" + "="*60)
     print(f"SSD WITH MCMC POSTERIOR SAMPLES ({n_curves} curves)")
     print("="*60)
@@ -103,7 +101,7 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     rows = []
     for species in unique_species:
         rows.append({
-            "CAS": TARGET_CAS,
+            "CAS": ssd_analysis.TARGET_CAS,
             "species": species,
             "duration": DURATION_HOURS
         })
@@ -132,7 +130,7 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     X_grid = sp.hstack([X_cat, sp.csr_matrix(num_grid)], format="csr")
     X2_grid = X_grid.copy(); X2_grid.data **= 2
     
-    chem_group_idx = cas_to_idx[TARGET_CAS]
+    chem_group_idx = cas_to_idx[ssd_analysis.TARGET_CAS]
     n_species = len(unique_species)
     
     print(f"Built design matrix: {X_grid.shape}")
@@ -191,14 +189,14 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     noise_label = "epistemic + aleatoric" if include_aleatoric else "epistemic only"
     ax.set_xlabel("Predicted Toxicity (Log mg/L)", fontsize=12)
     ax.set_ylabel("Fraction of Species Affected", fontsize=12)
-    ax.set_title(f"SSD with Posterior Uncertainty: {CHEMICAL_NAME} at {DURATION_HOURS}h\n"
+    ax.set_title(f"SSD with Posterior Uncertainty: {ssd_analysis.CHEMICAL_NAME} at {DURATION_HOURS}h\n"
                  f"({n_curves} MCMC samples, {noise_label})", fontsize=14)
     ax.legend(loc='lower right', fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.set_ylim(0, 1)
     ax.set_xlim(-10, 10)
     
-    safe_name = CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
+    safe_name = ssd_analysis.CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
     safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
     output_path = OUTPUT_DIR / f"ssd_uncertainty_{safe_name}_{DURATION_HOURS}h.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -476,6 +474,10 @@ def compute_traditional_hcx(df_obs, percentiles=[20], min_species=5):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="SSD Monte Carlo Uncertainty Analysis")
+    parser.add_argument("--cas", type=str, default="1912-24-9",
+                        help="CAS number of target chemical (default: 1912-24-9 = Atrazine)")
+    parser.add_argument("--name", type=str, default=None,
+                        help="Chemical name (auto-detected from data if not provided)")
     parser.add_argument("--all-hcx", action="store_true",
                         help="Compute HC20 for ALL chemicals (instead of plotting one SSD)")
     parser.add_argument("--percentiles", type=int, nargs="+", default=[20],
@@ -487,6 +489,8 @@ def main():
     parser.add_argument("--min-species", type=int, default=5,
                         help="Min species for traditional SSD (default: 5)")
     args = parser.parse_args()
+
+    set_target(args.cas, args.name)
 
     if args.all_hcx:
         # ---- All-chemicals HCx mode ----
@@ -539,10 +543,10 @@ def main():
         # ---- Original single-chemical SSD plot mode ----
         print("="*60)
         print(f"SSD MONTE CARLO UNCERTAINTY ANALYSIS")
-        print(f"Target: CAS {TARGET_CAS} at {DURATION_HOURS}h")
+        print(f"Target: CAS {ssd_analysis.TARGET_CAS} at {DURATION_HOURS}h")
         print("="*60)
 
-        # Load data (also sets CHEMICAL_NAME via filter_observations)
+        # Load data (filter_observations will auto-detect CHEMICAL_NAME)
         df_obs = load_observations()
         pred_df = load_full_predictions()
 
@@ -558,11 +562,10 @@ def main():
         hc5_model, hc5_lower, hc5_upper = plot_ssd_with_uncertainty(pred_df_filtered)
 
         # Summary
-        from ssd_analysis import CHEMICAL_NAME
         print("\n" + "="*60)
         print("SUMMARY")
         print("="*60)
-        print(f"Chemical: {CHEMICAL_NAME}")
+        print(f"Chemical: {ssd_analysis.CHEMICAL_NAME}")
         print(f"Duration: {DURATION_HOURS}h")
         print(f"Predicted species: {len(pred_df_filtered)}")
         print(f"\nMCMC HC5:")
