@@ -30,7 +30,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
 
 # Output directory for plots
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "analyze_results"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 from data.load_ecotox import load_ecotox_data
@@ -40,14 +40,14 @@ def load_data_and_predictions():
     """Load ecotox data and pre-computed OOF predictions with uncertainties."""
     print("Loading Data...")
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, y_centered = load_ecotox_data(
+    full_data, y_centered, y_mean = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,  # Use log mg/L for interpretability
         use_selfies=False, use_mol2vec=False, use_fingerprint=False,
         shuffle=True, random_state=42
     )
-    
+
     # Load Artifacts
     MODELS_DIR = ROOT_DIR / "outputs" / "models"
     try:
@@ -59,10 +59,10 @@ def load_data_and_predictions():
         print(f"Artifacts not found in {MODELS_DIR}!")
         print("Please run scripts/train_bfm.py first.")
         sys.exit(1)
-        
+
     df = full_data.copy()
-    df["y_true"] = y_centered
-    df["y_pred"] = oof_mean
+    df["y_true"] = y_centered + y_mean
+    df["y_pred"] = oof_mean + y_mean
     df["epistemic_var"] = oof_epistemic
     df["aleatoric_var"] = oof_aleatoric
     df["total_var"] = df["epistemic_var"] + df["aleatoric_var"]

@@ -71,7 +71,7 @@ def main():
     # 1. Load Data (same as train_bfm.py)
     print("\n1. Loading data...")
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, y_centered = load_ecotox_data(
+    full_data, y_centered, y_mean = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,  # Use log mg/L instead of log molar
@@ -154,7 +154,8 @@ def main():
         "unique_durations": unique_durations,
         "num_cols": num_cols,
         "species_to_tax": species_to_tax,
-        "chem_props": chem_props
+        "chem_props": chem_props,
+        "y_mean": y_mean,
     }, model_path)
     print(f"   Model saved successfully!")
 
@@ -224,7 +225,7 @@ def main():
         
         # Store results
         result_df = grid_df[["CAS", "species", "duration"]].copy()
-        result_df["pred_mean"] = pred_mean
+        result_df["pred_mean"] = pred_mean + y_mean
         result_df["pred_epistemic_var"] = pred_epistemic_var
         result_df["pred_aleatoric_var"] = pred_aleatoric_var
         

@@ -1,64 +1,45 @@
-#!/usr/bin/env bash
-#
-# generate_paper_figures.sh - Reproduce all figures and tables from the paper.
-#
-# Prerequisites:
-#   1. Install dependencies:  pip install -r requirements.txt
-#   2. Place ADORE data in data/raw/ (see data/raw/README.md)
-#   3. Train the model:       python scripts/train_bfm.py
-#   4. Generate predictions:  python scripts/generate_predictions.py
-#
-# Then run this script to produce every figure and table.
-#
-# Usage:
-#   bash generate_paper_figures.sh
-#
-set -euo pipefail
+#!/bin/bash
+# Generate all paper figures and tables.
+# Prerequisites: trained model artifacts in outputs/models/
+#   python scripts/train_bfm.py
+#   python scripts/generate_predictions.py
 
-echo "============================================================"
-echo "  Generating all paper figures and tables"
-echo "============================================================"
-echo ""
+set -e
 
-# --- Dataset characterization (Table 1, Table 2, Figures 1-2) ---
-echo ">>> Dataset figures (Table 1, Table 2, Figures 1-2)"
+echo "=== Dataset characterization (Table 1-2, Figures 1-2) ==="
 python analysis/dataset_figures.py
-echo ""
 
-# --- Model performance (Figures 3-4) ---
-echo ">>> Model performance (Figures 3-4)"
+echo ""
+echo "=== Predictive accuracy (Figures 3-4) ==="
 python analysis/analyze_results.py
-echo ""
 
-# --- Uncertainty calibration (Figures 5-6) ---
-echo ">>> Uncertainty calibration (Figures 5-6)"
+echo ""
+echo "=== Uncertainty calibration (Figures 5-6) ==="
 python analysis/uncertainty_figures.py
-echo ""
 
-# --- SSD plots for Atrazine (Figures 7a, 8a, 9a) ---
-echo ">>> SSD: Atrazine (Figures 7a, 8a, 9a)"
+echo ""
+echo "=== SSD analysis: Atrazine (Figures 8-9) ==="
 python analysis/ssd_analysis.py --cas 1912-24-9
-python analysis/ssd_mc_uncertainty.py --cas 1912-24-9
-echo ""
 
-# --- SSD plots for Chlorfenprop-methyl (Figures 7b, 8b, 9b) ---
-echo ">>> SSD: Chlorfenprop-methyl (Figures 7b, 8b, 9b)"
+echo ""
+echo "=== SSD analysis: Chlorfenprop-methyl (Figures 8-9) ==="
 python analysis/ssd_analysis.py --cas 14437-17-3
+
+echo ""
+echo "=== SSD MCMC ensemble: Atrazine (Figure 7) ==="
+python analysis/ssd_mc_uncertainty.py --cas 1912-24-9
+
+echo ""
+echo "=== SSD MCMC ensemble: Chlorfenprop-methyl (Figure 7) ==="
 python analysis/ssd_mc_uncertainty.py --cas 14437-17-3
-echo ""
 
-# --- HC20 comparison across all chemicals (Figures 10-11) ---
-echo ">>> HC20 all-chemicals comparison (Figures 10-11)"
-python analysis/ssd_mc_uncertainty.py --all-hcx --percentiles 20
+echo ""
+echo "=== HC20 for all chemicals (CSV for Figures 10-11) ==="
+python analysis/ssd_mc_uncertainty.py --all-hcx
+
+echo ""
+echo "=== HC20 plots (Figures 10-11) ==="
 python analysis/hcx_plots.py
-echo ""
 
-echo "============================================================"
-echo "  All figures and tables generated successfully."
-echo "============================================================"
 echo ""
-echo "Outputs:"
-echo "  outputs/figures/dataset/       - Tables 1-2, Figures 1-2"
-echo "  outputs/figures/analyze_results/ - Figures 3-4"
-echo "  outputs/figures/uncertainty_calibration/ - Figures 5-6"
-echo "  outputs/figures/ssd_analysis/  - Figures 7-11"
+echo "=== All figures saved to outputs/figures/ ==="

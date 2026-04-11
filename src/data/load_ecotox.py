@@ -49,6 +49,7 @@ def load_ecotox_data(
     Returns:
         df: Preprocessed DataFrame
         y_centered: Centered concentration values (target variable)
+        y_mean: Global mean used for centering (add back to recover original log units)
     """
     # 1) Base merges
     adore = pd.read_csv(adore_path, low_memory=False)
@@ -114,4 +115,4 @@ def load_ecotox_data(
     y_mean = df["conc"].mean()
     df["conc_centered"] = df["conc"] - y_mean
 
-    return df, df["conc_centered"].values
+    return df, df["conc_centered"].values, y_mean

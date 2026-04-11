@@ -93,7 +93,8 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     chem_props = model_data["chem_props"]
     num_cols = model_data["num_cols"]
     unique_species = model_data["unique_species"]
-    
+    y_mean = model_data.get("y_mean", 0.0)
+
     n_total_samples = len(model.samples)
     print(f"Model has {n_total_samples} posterior samples")
     
@@ -154,16 +155,16 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
         # Deterministic prediction from this sample's parameters
         q = X_grid @ v
         inter = 0.5 * ((q**2) - X2_grid @ (v**2)).sum(axis=1)
-        preds = np.asarray(w0 + X_grid @ w + inter).ravel()
-        
+        preds = np.asarray(w0 + X_grid @ w + inter).ravel() + y_mean
+
         # Optionally add aleatoric noise using this sample's alpha_c
         if include_aleatoric:
             aleatoric_sd = np.sqrt(1.0 / alpha_vec[chem_group_idx])
             preds = preds + rng.normal(0, aleatoric_sd, size=n_species)
-        
+
         # Sort to get SSD curve
         all_ssd_curves[i] = np.sort(preds)
-    
+
     # Empirical CDF y-values
     y_cdf = np.arange(1, n_species + 1) / (n_species + 1)
     
@@ -271,6 +272,7 @@ def compute_hcx_all_chemicals(percentiles=[20], n_samples=None,
     chem_props     = model_data["chem_props"]
     num_cols       = model_data["num_cols"]
     unique_species = model_data["unique_species"]
+    y_mean         = model_data.get("y_mean", 0.0)
 
     n_total_samples = len(model.samples)
     print(f"Model has {n_total_samples} posterior samples")
@@ -288,7 +290,7 @@ def compute_hcx_all_chemicals(percentiles=[20], n_samples=None,
     try:
         from data.load_ecotox import load_ecotox_data
         DATA_DIR = ROOT_DIR / "data" / "raw"
-        obs_df, _ = load_ecotox_data(
+        obs_df, _, _ = load_ecotox_data(
             adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
             chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
             use_molar=False, use_selfies=False,
@@ -365,7 +367,7 @@ def compute_hcx_all_chemicals(percentiles=[20], n_samples=None,
 
             q = X_grid @ v
             inter = 0.5 * ((q ** 2) - X2_grid @ (v ** 2)).sum(axis=1)
-            preds = np.asarray(w0 + X_grid @ w + inter).ravel()
+            preds = np.asarray(w0 + X_grid @ w + inter).ravel() + y_mean
 
             if include_aleatoric:
                 aleatoric_sd = np.sqrt(1.0 / alpha_vec[chem_group_idx])

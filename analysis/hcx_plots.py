@@ -22,7 +22,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "ssd_analysis"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 
 DURATION_HOURS = 48
 PERCENTILE = 20  # HC20

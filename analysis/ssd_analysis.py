@@ -38,7 +38,7 @@ from data.load_ecotox import load_ecotox_data
 # CONFIGURATION
 # =============================================================================
 DURATION_HOURS = 48
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "ssd_analysis"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 # These are set by parse_args() or set_target() before any analysis runs.
@@ -57,16 +57,16 @@ def load_observations():
     """Load actual observations (for traditional SSD)."""
     print("Loading observed data...")
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, y_centered = load_ecotox_data(
+    full_data, y_centered, y_mean = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,  # Use log mg/L for interpretability
         use_selfies=False, use_mol2vec=False, use_fingerprint=False,
         shuffle=True, random_state=42
     )
-    
+
     df = full_data.copy()
-    df["y_true"] = y_centered
+    df["y_true"] = y_centered + y_mean
     
     print(f"   Loaded {len(df):,} observations")
     return df
@@ -328,7 +328,7 @@ def plot_novel_ssd_with_uncertainty(pred_df, z_score=1.96):
     
     safe_name = CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
     safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
-    output_path = OUTPUT_DIR / f"ssd_novel_uncertainty_{safe_name}_{DURATION_HOURS}h.png"
+    output_path = OUTPUT_DIR / f"{safe_name}_novel_uncertainty.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {output_path}")
     plt.close()
@@ -426,7 +426,7 @@ def plot_traditional_vs_novel_ssd(df_obs, pred_df):
     
     safe_name = CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
     safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
-    output_path = OUTPUT_DIR / f"ssd_traditional_vs_novel_{safe_name}_{DURATION_HOURS}h.png"
+    output_path = OUTPUT_DIR / f"SSD_comparison_{safe_name}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {output_path}")
     plt.close()

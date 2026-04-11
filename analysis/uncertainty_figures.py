@@ -33,7 +33,7 @@ MIN_OBS_FOR_EXAMPLES = 10  # Minimum observations for example chemicals
 N_EXAMPLE_CHEMICALS = 5
 RANDOM_SEED = 42
 
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "uncertainty_calibration"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 
@@ -41,14 +41,14 @@ def load_oof_data():
     """Load ecotox data and pre-computed OOF predictions with uncertainties."""
     print("Loading OOF Data...")
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, y_centered = load_ecotox_data(
+    full_data, y_centered, y_mean = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,
         use_selfies=False, use_mol2vec=False, use_fingerprint=False,
         shuffle=True, random_state=42
     )
-    
+
     MODELS_DIR = ROOT_DIR / "outputs" / "models"
     try:
         oof_mean = np.load(MODELS_DIR / "oof_mean.npy")
@@ -59,10 +59,10 @@ def load_oof_data():
         print(f"Artifacts not found in {MODELS_DIR}!")
         print("Please run scripts/train_bfm.py first.")
         sys.exit(1)
-        
+
     df = full_data.copy()
-    df["y_true"] = y_centered
-    df["y_pred"] = oof_mean
+    df["y_true"] = y_centered + y_mean
+    df["y_pred"] = oof_mean + y_mean
     df["epistemic_var"] = oof_epistemic
     df["aleatoric_var"] = oof_aleatoric
     df["total_var"] = df["epistemic_var"] + df["aleatoric_var"]
@@ -105,7 +105,7 @@ def load_full_predictions():
 def load_observation_counts():
     """Load observation counts per chemical from the raw data."""
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, _ = load_ecotox_data(
+    full_data, _, _ = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,

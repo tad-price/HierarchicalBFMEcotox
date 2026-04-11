@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 
 from data.load_ecotox import load_ecotox_data
 
-OUTPUT_DIR = ROOT_DIR / "outputs" / "figures" / "dataset"
+OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 DURATION_HOURS = 48
@@ -40,14 +40,14 @@ DURATION_HOURS = 48
 def load_data():
     """Load the ADORE ecotox dataset."""
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, y_centered = load_ecotox_data(
+    full_data, y_centered, y_mean = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,
         use_selfies=False, use_mol2vec=False, use_fingerprint=False,
         shuffle=True, random_state=42,
     )
-    full_data["y_true"] = y_centered
+    full_data["y_true"] = y_centered + y_mean
     return full_data
 
 
@@ -61,10 +61,11 @@ def table1_summary(df):
     n_species = df["species"].nunique()
     n_durations = df["duration"].nunique()
 
+    n_pairs = df.groupby(["species", "CAS"], observed=True).ngroups
     triplets = df.groupby(["species", "CAS", "duration"], observed=True).ngroups
     n_obs = len(df)
 
-    sparsity = 1.0 - triplets / (n_chemicals * n_species)
+    sparsity = 1.0 - n_pairs / (n_chemicals * n_species)
 
     rows = [
         ("Number of unique chemicals", n_chemicals),
@@ -185,7 +186,7 @@ def figure1_rank_frequency(df):
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    output_path = OUTPUT_DIR / "rank_frequency_plots.png"
+    output_path = OUTPUT_DIR / "rank_freq.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {output_path}")
     plt.close()
@@ -217,7 +218,7 @@ def figure2_rsd_distribution(df):
     ax.grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
-    output_path = OUTPUT_DIR / "rsd_distribution.png"
+    output_path = OUTPUT_DIR / "RSD_distribution_all_durations.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {output_path}")
     plt.close()

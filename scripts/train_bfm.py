@@ -74,7 +74,7 @@ def main():
     
     # 1. Load Data (using mg/L units for interpretability)
     DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, y_centered = load_ecotox_data(
+    full_data, y_centered, y_mean = load_ecotox_data(
         adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
         chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
         use_molar=False,  # Use log mg/L instead of log molar
@@ -190,6 +190,7 @@ def main():
     np.save(OUTPUTS / "oof_mean.npy", oof_mean)
     np.save(OUTPUTS / "oof_epistemic.npy", oof_epistemic)
     np.save(OUTPUTS / "oof_aleatoric.npy", oof_aleatoric)
+    np.save(OUTPUTS / "y_mean.npy", np.array(y_mean))
     
     # Overall RMSE
     overall_rmse = np.sqrt(np.mean((oof_mean - y_centered)**2))

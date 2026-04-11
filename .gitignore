@@ -8,35 +8,31 @@ __pycache__/
 .eggs/
 *.egg
 
-# Virtual environments
 venv/
 env/
 .venv/
 
-# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# Jupyter
 .ipynb_checkpoints/
 *.ipynb
 
-# OS
 .DS_Store
 Thumbs.db
 
-# Data files (large, copy manually)
 data/raw/*.csv
 
-# Model outputs (large, can be regenerated)
+
 outputs/models/*.pkl
 outputs/models/*.parquet
 outputs/models/*.npy
+outputs/figures/latent_space
+analysis/latent_space_deserts.py
 
-# Keep directory structure
 !data/raw/.gitkeep
 !outputs/models/.gitkeep
 !outputs/figures/.gitkeep
