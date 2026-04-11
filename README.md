@@ -123,7 +123,7 @@ Some non-image data is also output in the terminal directly.
 
 The Hierarchical BFM uses Gibbs sampling with:
 - **Latent dimensionality**: k=32
-- **Iterations**: 200 (100 burn-in)
+- **Iterations**: 200 (100 burn-in) [in the paper 2000 iterations with 50 burn-in is used, depending on hardware this can take multiple hours to run]
 - **Per-chemical precision**: α_c ~ Gamma(a₀, b₀) with a₀=b₀=1
 
 Key features:
