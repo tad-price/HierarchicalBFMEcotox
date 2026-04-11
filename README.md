@@ -130,6 +130,9 @@ Key features:
 - Categorical features: species, CAS (chemical), duration, taxonomic family, taxonomic class
 - Numerical features: log molecular weight, cLogP
 - Target: log mg/L concentration (centered)
+- 
+## LLMs disclaimer
+Claude code was used to assist creating this repo, especially in creating the code to generate the figures, and in improving the readability of the core code. 
 
 ## Citation
 
