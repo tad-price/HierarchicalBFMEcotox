@@ -110,15 +110,21 @@ def table2_aleatoric_calibration(df):
     grouped = df.groupby(["species", "CAS", "duration"], observed=True)
 
     records = []
+    n_degenerate = 0
     for _, g in grouped:
         n = len(g)
         if n < 5:
             continue
         emp_sd = g["y_true"].std()
+        if emp_sd < 1e-6:  # duplicate/identical records; useless for calibration
+            n_degenerate += 1
+            continue
         pred_sd = np.sqrt(g["pred_aleatoric_var"].mean())
         records.append({"n": n, "emp_sd": emp_sd, "pred_sd": pred_sd})
 
     recs = pd.DataFrame(records)
+    if n_degenerate:
+        print(f"Dropped {n_degenerate} degenerate triplet(s) with emp_sd < 1e-6")
 
     bins = [(5, 9), (10, 19), (20, 49), (50, 99), (100, None)]
     bin_labels = ["5-9", "10-19", "20-49", "50-99", "100+"]
@@ -126,7 +132,8 @@ def table2_aleatoric_calibration(df):
     print("\n" + "=" * 60)
     print("TABLE 2: Aleatoric calibration by replicate count")
     print("=" * 60)
-    header = f"{'Replicates':<12} {'N groups':<10} {'Mean Ratio':<12} {'Median Ratio':<14} {'Mean Pred SD':<14} {'Mean Emp SD':<12}"
+    header = (f"{'Replicates':<12} {'N groups':<10} {'Pooled Ratio':<14} "
+              f"{'Median Ratio':<14} {'Ratio IQR':<18} {'Mean Pred SD':<14} {'Mean Emp SD':<12}")
     print(header)
     print("-" * len(header))
 
@@ -139,17 +146,22 @@ def table2_aleatoric_calibration(df):
         sub = recs[mask]
         if len(sub) == 0:
             continue
-        ratio = sub["pred_sd"] / sub["emp_sd"].replace(0, np.nan)
+        ratio = sub["pred_sd"] / sub["emp_sd"]
+        pooled = sub["pred_sd"].mean() / sub["emp_sd"].mean()
+        q25, q75 = ratio.quantile(0.25), ratio.quantile(0.75)
         row = {
             "Replicates": label,
             "N groups": len(sub),
-            "Mean Ratio": f"{ratio.mean():.3f}",
+            "Pooled Ratio": f"{pooled:.3f}",
             "Median Ratio": f"{ratio.median():.3f}",
+            "Ratio IQR": f"[{q25:.3f}, {q75:.3f}]",
             "Mean Pred SD": f"{sub['pred_sd'].mean():.3f}",
             "Mean Emp SD": f"{sub['emp_sd'].mean():.3f}",
         }
         table_rows.append(row)
-        print(f"{label:<12} {len(sub):<10} {ratio.mean():<12.3f} {ratio.median():<14.3f} {sub['pred_sd'].mean():<14.3f} {sub['emp_sd'].mean():<12.3f}")
+        print(f"{label:<12} {len(sub):<10} {pooled:<14.3f} {ratio.median():<14.3f} "
+              f"{'['+format(q25,'.3f')+', '+format(q75,'.3f')+']':<18} "
+              f"{sub['pred_sd'].mean():<14.3f} {sub['emp_sd'].mean():<12.3f}")
 
     pd.DataFrame(table_rows).to_csv(OUTPUT_DIR / "table2_aleatoric_calibration.csv", index=False)
     print(f"Saved: {OUTPUT_DIR / 'table2_aleatoric_calibration.csv'}")

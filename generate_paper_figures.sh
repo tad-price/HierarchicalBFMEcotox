@@ -18,6 +18,14 @@ echo "=== Uncertainty calibration (Figures 5-6) ==="
 python analysis/uncertainty_figures.py
 
 echo ""
+echo "=== Variance decomposition (aleatoric vs epistemic) ==="
+python analysis/variance_decomposition.py
+
+echo ""
+echo "=== Posterior predictive calibration curve ==="
+python analysis/calibration_figures.py
+
+echo ""
 echo "=== SSD analysis: Atrazine (Figures 8-9) ==="
 python analysis/ssd_analysis.py --cas 1912-24-9
 

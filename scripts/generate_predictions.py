@@ -121,10 +121,24 @@ def main():
     print(f"   X shape: {X_train.shape}")
 
     # 5. Train model on full dataset
+    # Load EB-estimated alpha_a0 from the CV pre-pass so the full-data model uses
+    # the same hierarchical prior as the CV runs. Fall back to 1.0 if missing.
+    eb_path = ROOT_DIR / "outputs" / "models" / "eb_a0_hat.npy"
+    if eb_path.exists():
+        a0_hat = float(np.load(eb_path))
+        print(f"   Loaded EB alpha_a0 = {a0_hat:.4f} from {eb_path}")
+    else:
+        a0_hat = 1.0
+        print(f"   WARNING: {eb_path} not found; falling back to alpha_a0 = 1.0")
+
     print("\n4. Training model on full dataset...")
-    print(f"   (k=32, n_iter={args.n_iter}, n_burn={args.n_burn})")
-    
-    model = HierarchicalBFM(n_features=X_train.shape[1], n_groups=n_groups, k=32)
+    print(f"   (k=32, n_iter={args.n_iter}, n_burn={args.n_burn}, "
+          f"alpha_a0={a0_hat:.4f}, learn_alpha_b0=True)")
+
+    model = HierarchicalBFM(
+        n_features=X_train.shape[1], n_groups=n_groups, k=32,
+        alpha_a0=a0_hat, alpha_b0_init=1.0, learn_alpha_b0=True,
+    )
     model.fit(X_train, y_train, groups=groups, n_iter=args.n_iter, n_burn=args.n_burn)
     
     print(f"   Collected {len(model.samples)} posterior samples")

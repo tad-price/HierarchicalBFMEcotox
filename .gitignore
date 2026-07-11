@@ -27,9 +27,9 @@ Thumbs.db
 data/raw/*.csv
 
 
-outputs/models/*.pkl
-outputs/models/*.parquet
-outputs/models/*.npy
+outputs/models/**/*.pkl
+outputs/models/**/*.parquet
+outputs/models/**/*.npy
 outputs/figures/latent_space
 analysis/latent_space_deserts.py
 

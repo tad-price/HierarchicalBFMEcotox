@@ -20,18 +20,27 @@ class HierarchicalBFM:
     Learns a separate precision parameter (alpha) for each group (chemical), regularized by a shared prior.
     """
 
-    def __init__(self, n_features: int, n_groups: int, k: int):
+    def __init__(self, n_features: int, n_groups: int, k: int,
+                 alpha_a0: float = 1.0,
+                 alpha_b0_init: float = 1.0,
+                 learn_alpha_b0: bool = False,
+                 alpha_b0_c0: float = 1.0,
+                 alpha_b0_d0: float = 1.0):
         self.n_features = n_features
         self.n_groups = n_groups
         self.k = k
         self.samples = []
 
-        # Hyper-prior constants
-        # Prior for alpha_c ~ Gamma(alpha_a0, alpha_b0)
-        # We use fixed hyperparameters for the prior of alphas to induce shrinkage towards the prior mean.
-        self.alpha_a0 = 1.0
-        self.alpha_b0 = 1.0
-        
+        # Prior for alpha_c ~ Gamma(alpha_a0, alpha_b0).
+        # alpha_a0 is fixed (set externally, e.g. by empirical Bayes); alpha_b0
+        # is either fixed or given its own Gamma(c0, d0) hyperprior and resampled
+        # each sweep — conjugate, one extra Gamma draw, pure Gibbs preserved.
+        self.alpha_a0 = alpha_a0
+        self.alpha_b0 = alpha_b0_init
+        self.learn_alpha_b0 = learn_alpha_b0
+        self.alpha_b0_c0 = alpha_b0_c0
+        self.alpha_b0_d0 = alpha_b0_d0
+
         # Prior for weights and factors
         self.gamma_0  = 1.0  # prior precision of means
         self.mu_0     = 0.0  # prior mean of means
@@ -186,9 +195,16 @@ class HierarchicalBFM:
             
             shape_vec = self.alpha_a0 + 0.5 * n_per_group
             rate_vec  = self.alpha_b0 + 0.5 * sse_per_group
-            
+
             # Sample new alphas
             alpha_vec = rng.gamma(shape_vec, 1.0 / rate_vec)
+
+            # --- 4b. Sample alpha_b0 from its Gamma hyperprior (conjugate) ---
+            # b_0 | {alpha_c} ~ Gamma(c0 + C*a0, d0 + sum_c alpha_c)
+            if self.learn_alpha_b0:
+                b0_shape = self.alpha_b0_c0 + self.n_groups * self.alpha_a0
+                b0_rate  = self.alpha_b0_d0 + alpha_vec.sum()
+                self.alpha_b0 = rng.gamma(b0_shape, 1.0 / b0_rate)
 
             # --- Store samples ---
             if it >= n_burn:
@@ -196,5 +212,39 @@ class HierarchicalBFM:
                     "w0": w0,
                     "w": w.copy(),
                     "v": v.copy(),
-                    "alpha_vec": alpha_vec.copy()
+                    "alpha_vec": alpha_vec.copy(),
+                    "alpha_b0": self.alpha_b0,
                 })
+
+
+def estimate_alpha_a0(alpha_samples_by_group: np.ndarray,
+                      n_per_group: np.ndarray,
+                      min_n: int = 50) -> float:
+    """Method-of-moments empirical-Bayes estimate of the Gamma prior shape a_0.
+
+    Uses only data-rich chemicals (N_c >= min_n), where the posterior is
+    data-driven and the prior barely matters. Fits a Gamma to the posterior
+    means of their precisions and returns the MoM shape; the corresponding
+    rate is discarded because the sampler learns b_0.
+
+    Parameters
+    ----------
+    alpha_samples_by_group : (n_groups, n_kept_samples) posterior alpha_c draws
+    n_per_group            : (n_groups,) observation counts per group
+    min_n                  : threshold for "data-rich" chemicals
+
+    Returns
+    -------
+    a0_hat : float
+    """
+    rich = n_per_group >= min_n
+    if rich.sum() < 20:
+        raise ValueError(
+            f"Only {int(rich.sum())} chemicals with N_c >= {min_n}; "
+            f"lower min_n to get a stable EB estimate."
+        )
+    alpha_hat = alpha_samples_by_group[rich].mean(axis=1)
+    m, v = float(alpha_hat.mean()), float(alpha_hat.var())
+    if v <= 0:
+        raise ValueError("Zero variance in data-rich alpha posterior means.")
+    return m * m / v
