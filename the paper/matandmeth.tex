@@ -1,0 +1,132 @@
+\section{Materials and Methods}
+\subsection{Overview}
+
+This section sets out the data and the model. We begin with the ecotoxicity dataset and the three properties that shape the modelling problem: the data are \textbf{sparse}, they are \textbf{unevenly distributed} across chemicals and species, and they show substantial \textbf{variability} between repeated tests of the same chemical and species. Each property motivates a specific modelling choice, which we make explicit as we go.
+
+The prediction task is to estimate the LC50 for species--chemical combinations that have not been tested, using the combinations that have. Our starting point is the Factorization Machine applied to this task by \citet{PosthumaImprovingHazard}, which is accurate and well suited to sparse data. We keep its predictive core unchanged and make two changes that together turn a single point prediction into a prediction with quantified, decomposed uncertainty.
+
+The first change is to reformulate the model in Bayesian terms. Instead of fitting one best set of parameters, we treat the parameters as quantities that the data constrain only partially, and we work with many plausible parameter sets at once. Each set produces its own prediction, so every species--chemical combination receives not a single number but a spread of predictions. The width of that spread is a per-prediction measure of how strongly the data constrain the model, which is information a point estimate cannot provide. Intuitively, the data are consistent with many models, and we account for that rather than committing to one.
+
+The second change is to model the test noise explicitly, separately for each chemical. The repeated-test variability in the data shows that a single laboratory result is better understood as one draw from a distribution than as a fixed value. We therefore add a variance term that the model learns for each chemical, on the assumption that different chemicals carry different baseline levels of test noise. This lets the model report how much of the spread around a prediction is irreducible measurement noise rather than a lack of data.
+
+The remainder of the section describes the dataset, then the predictive model and these two changes in turn. The full mathematical specification, including the hierarchical structure and the sampling procedure, is given in the Supporting Information. All code is available online, allowing the results of this paper to be reproduced, and the method to be applied to other datasets and adapted as desired. 
+
+
+\subsection{Dataset}
+
+The dataset used is an unfiltered view of the ADORE dataset introduced by \citet{ADORE}. The ecotoxicity values in ADORE come from the US EPA ECOTOX dataset \citep{ECOTOX}, and ADORE includes a large number of features of chemicals and species, forming a low barrier to entry for data scientists from outside the domain and reducing the risk of errors when procuring features. Multiple endpoints are available, such as Effective Concentration or No Effect Concentration, however out of the available endpoints, LC50 is chosen as the sole endpoint to focus on for all experiments, as it is consistently well-defined and has a significant amount of data available. Future work could use data from multiple endpoints to improve model performance, however this would require significant data engineering work to standardise the reporting of other endpoints.
+
+Each row of the dataset contains an LC50 observation for a tested species--chemical pair in weight-based concentration units (mg/L), which is log-transformed for modelling. Each observation includes information relating to the chemical that was tested, the species that was exposed, and further information about the lab conditions (such as test duration, and various other test characteristics, if available).
+
+The ADORE dataset includes a number of `challenge' slices, where the data is limited to specific sub-species, however, in order to leverage as much of the data as possible, the processed but not divided dataset is used here. This is the same unfiltered view of ADORE used in \citet{PosthumaImprovingHazard}, so that the exact same results as presented in that paper are expanded with the uncertainty analyses, allowing for direct comparisons. Specifically \texttt{ecotox\_mortality\_processed.csv} is joined with \texttt{ecotox\_properties\_with-oecd-function.csv}, available to download at \url{https://gitlab.renkulab.io/mltox/adore}, where in-depth details on the dataset processing can also be found. Table~\ref{tab:adore_summary} shows summary statistics about the dataset.
+
+\begin{table}[ht]
+\centering
+\caption{Summary statistics of the ADORE (mortality processed) dataset}
+\label{tab:adore_summary}
+\begin{tabular}{l r}
+\hline
+\textbf{Statistic} & \textbf{Value} \\
+\hline
+Number of unique chemicals & 3,295 \\
+Number of unique species & 1,267 \\
+Number of durations & 4 \\
+Number of unique (species, chemical, duration) triplets observed & 31,319 \\
+Total number of observations & 70,670 \\
+Sparsity (species$\times$chemical matrix) & 99.5\% \\
+\hline
+\end{tabular}
+\end{table}
+
+The overview of ADORE (ecotox\_mortality\_processed) in Table~\ref{tab:adore_summary} illustrates that ecotoxicity data sets have specific characteristics, posing challenges for practice. The Table shows the first major challenge of this dataset: \textbf{sparsity}. Even if the duration dimension (with four exposure times: 24, 48, 72 and 96 hours of exposure) is collapsed, only around 0.5\% of the chemical--species pairs have observed LC50 values. This sparsity is the reason a predictive model is needed at all: for the large majority of pairs there is no measured value, so the task is to infer those values from the few pairs that have been tested. Note further that the data set is not only sparse, but also just a fraction of the full matrix, which would need to cover more than 350,000 chemicals that are in active use globally \cite{wang2020toward}, and a vastly larger diversity of species than currently in ADORE.
+
+The second major challenge for using the data effectively is the \textbf{uneven distribution of observations} across the matrix, which is illustrated in Figure~\ref{fig:rank-freq} from the points of view of chemicals and species separately. The rank-frequency plots illustrate that most unique species and chemicals have just a handful of observations, while a few chemicals and species have been tested hundreds of times. As a result, the amount of evidence behind a prediction varies widely across the matrix: a prediction involving a chemical or species with hundreds of observations is far better supported than one involving a chemical or species seen only a few times. We will want the model's reported confidence to track this difference.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\linewidth]{images/rank_freq.png}
+    \caption{Characteristics of the species--chemical pair test data in the ADORE data set: plots showing the number of observations per species (left) and per chemical (right) ranked by number of observations.}
+    \label{fig:rank-freq}
+\end{figure}
+
+The third challenge of the data is very high \textbf{inter-test variability} among the multiple-tested species--chemical pairs. Figure~\ref{fig:rsd-distr} shows the distribution of normalised standard deviations for chemical--species--duration combinations where at least 10 observations are available. This shows that there is a significant portion of the data set where the variance of repeated observations is very high, greater than the mean, or even double or triple the mean. Some of this spread could in principle be reduced: more standardised test conditions and protocols would remove part of it, and, on the modelling side, additional test-condition features could explain part of it as structured effects rather than leaving it as unexplained noise. However far such efforts are taken, though, a residual component will always remain, rooted in the biological and experimental variability inherent to toxicity testing. Rather than treating this as a nuisance to be minimised, our approach confronts it directly by quantifying it, so that whatever steps the community takes to reduce inter-test variability, accounting for what remains is not sidestepped. Because the same nominal test can give very different results, a single measured LC50 is best understood as one sample from an underlying distribution rather than a fixed value. A model that returns only a point prediction cannot represent this spread, which is one reason point predictions alone are not sufficient here; we return to this when we model the noise explicitly.
+
+
+These three properties: sparsity, uneven sampling, and high inter-test variability, are not unique to the ADORE data but are common to ecotoxicity datasets, and they drive model choice and evaluation in applying machine learning in this domain. Each one motivates a specific element of the model that follows: sparsity motivates a model that can fill gaps, uneven sampling motivates a per-prediction measure of confidence, and inter-test variability motivates an explicit model of the test noise.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.7\linewidth]{images/RSD_distribution_all_durations.png}
+    \caption{Characteristics of the species--chemical--duration sets of test data in the ADORE data set, for which there are more than 10 observations for each combination (multiple test data available for same triplet): the distribution of Relative Standard Deviations (RSDs) in the data grouped by species, chemical, duration illustrates the wide variability ranges of tests that are, in principle, the same.}
+    \label{fig:rsd-distr}
+\end{figure}
+\subsection{The Hierarchical Bayesian Factorization Machine}
+
+This section describes the model that predicts LC50 values for untested species--chemical combinations, together with the uncertainty attached to each prediction. It applies to combinations whose chemical and species each appear somewhere in the training data, and is not designed for chemicals or species that are entirely absent.
+
+The predictive core is the factorization machine applied to this task by \citet{PosthumaImprovingHazard}, chosen because it handles sparse data well and has proven successful both on LC50 prediction and on sparse matrix completion more generally. On its own it supplies the point prediction: a single best estimate of toxicity for each combination. We keep this core unchanged and cast it in Bayesian form, following the Bayesian Factorization Machine of \citet{rendle2011bayesian}; replacing the single fitted model with an ensemble of plausible fits yields the epistemic uncertainty, the reducible part that reflects how strongly the data constrain each prediction. Working within that same framework, we implement the model ourselves and adapt it to ecotoxicity data: in place of the single global noise level assumed by the standard BFM, each chemical receives its own noise term under a shared hierarchical prior, capturing the aleatoric uncertainty, the irreducible spread between repeated tests. This per-chemical, hierarchically pooled noise model is the main methodological contribution of this work.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.6\linewidth]{images/plate_diagram.jpg}
+    \caption{Plate notation of the Hierarchical Bayesian Factorization Machine. Fixed constants (rectangles) set the hyperpriors for three groups of parameters: the linear weights $w_j$, the latent factors $v_{jf}$, and the per-chemical noise precisions $\alpha_c$. The weights $w_j$ and factors $v_{jf}$ share population-level mean and precision hyperparameters ($\mu_w, \lambda_w$ and $\mu_v, \lambda_v$ respectively), learned jointly across all $p$ features (and, for $v_{jf}$, across all $k$ latent dimensions); the noise precisions $\alpha_c$ share a rate $b_0$, learned across all $C$ chemicals, with shape $a_0$ fixed in advance. The global bias $w_0$ has a fixed prior. For each observation $i$, the predicted mean $\hat{y}_i$ (dashed, deterministic) is computed from the features $x_i$ together with $w_0$, $w_j$, and $v_{jf}$, and the observed toxicity $y_i$ is then drawn from a Gaussian centred on $\hat{y}_i$ with precision $\alpha_{c_i}$, the noise precision of the chemical $c_i$ tested in that observation. Shaded nodes are observed, open circles are latent variables inferred during fitting, and the dashed node is a deterministic function of its parents. The full equations corresponding to each node are given in the Supporting Information.}
+    \label{fig:plate}
+\end{figure}
+
+Figure~\ref{fig:plate} shows the complete model in plate notation. Reading from the top, the shared hyperparameters set the prior distributions for three groups of quantities: the linear weights, the latent factors, and the per-chemical noise precisions. Each chemical draws its own noise precision from the shared noise prior, and each observed toxicity value is generated from the factorization machine mean evaluated at that observation's features, with Gaussian noise whose precision is that of the observation's chemical. The plates mark what is repeated: the features and factors that make up the parameters, the chemicals that each carry a noise precision, and the observations that make up the data. For a reader familiar with hierarchical Bayesian models the diagram specifies the model in full; the equations are collected in the Supporting Information. In the main text we keep the focus on the three architectural choices and what each one adds.
+
+\subsubsection{The predictive model}
+
+The quantity the model predicts is the mean log-transformed LC50 for a given species--chemical combination at a given test duration. This predictive mean is produced by a second-order factorization machine, exactly as in \citet{PosthumaImprovingHazard}:
+\begin{equation}
+    \hat{y}_i(\theta) = w_0 + \sum_{j=1}^{p} w_j x_{ij} + \sum_{j=1}^{p} \sum_{j' > j}^{p} \langle \mathbf{v}_j, \mathbf{v}_{j'} \rangle x_{ij} x_{ij'}
+    \label{eq:fm_mean}
+\end{equation}
+Here $w_0$ is a global offset, the $w_j$ are weights on the individual input features, and the $\mathbf{v}_j$ are short latent vectors, one per feature, whose inner products $\langle \mathbf{v}_j, \mathbf{v}_{j'} \rangle$ give the strength of the interaction between features $j$ and $j'$. The feature vector $\mathbf{x}_i$ encodes the identity of the chemical and the species, the test duration, the taxonomic family and class of the species, and two numerical chemical properties (log-transformed molecular weight and the octanol--water partition coefficient). Full notation is given in the Supporting Information.
+
+In effect this is a linear model with main effects and pairwise interactions, with one important difference. The interaction terms are not stored as a separate weight for every pair of features, which would be both wasteful and unusable on sparse data, but are represented in a compact low-rank form through the latent vectors. This keeps the number of parameters small and, more importantly, lets the model estimate the interaction between a chemical and a species that were never tested together, by learning a representation of each from the combinations in which they do appear. This property is what makes the factorization machine well suited to filling a sparse matrix, and is why it performs well on this task \citep{Viljanen2023, PosthumaImprovingHazard}. Because the predictions are built from the identities of the chemical and species, the model can fill untested combinations of chemicals and species that appear in the data, but it cannot predict for an entirely new chemical or species that has never been seen. 
+
+\subsubsection{A Bayesian reformulation}
+
+A standard factorization machine is fitted by searching for the single set of parameter values that best matches the training data, usually by minimising a loss function with gradient descent. This produces one predicted value per combination and no indication of how reliable that value is. With data that are sparse and noisy this is a real shortcoming: the model cannot be trusted equally everywhere, yet a single predicted number gives no signal of where it rests on solid evidence and where it is effectively guessing.
+
+The Bayesian reformulation addresses this by treating the parameters not as fixed values to be optimised but as quantities that the data constrain only partially. Each parameter is given a prior distribution, which the data update into a posterior distribution describing the values that remain plausible after seeing the evidence. These priors are arranged hierarchically: related parameters, such as all the latent factors, share a common prior whose own parameters are also learned from the data. This shares information across the group, so that parameters supported by little data are pulled towards the group average rather than taking extreme values, a form of automatic regularisation known as partial pooling. We adopt the Bayesian Factorization Machine of \citet{rendle2011bayesian} for this purpose.
+
+Training is therefore no longer a search for one best set of parameters but the characterisation of this posterior distribution. Because the posterior has no closed form, we represent it by drawing a large number of samples from it using Gibbs sampling, a Markov chain Monte Carlo method described in the Supporting Information. Gibbs sampling builds this set by updating each parameter in turn from its distribution conditional on the current values of the others. Because the chain starts from arbitrary initial values, it takes a number of iterations before these conditional updates settle into the posterior; this initial \emph{burn-in} is discarded and only the samples drawn once the chain has stabilised are retained. Each retained sample is a complete set of parameters, and so corresponds to one plausible version of the model that produces its own full set of predictions.
+
+For any species--chemical combination we then obtain one prediction from each sample, with $\hat{y}^{(s)}(\mathbf{x}^*)$ denoting the prediction from sample $s$ computed via Equation~\ref{eq:fm_mean}. Their average is the model's point prediction,
+\begin{equation}
+    \hat{y}^* = \frac{1}{S} \sum_{s=1}^{S} \hat{y}^{(s)}(\mathbf{x}^*)
+    \label{eq:ppm}
+\end{equation}
+and their spread is the \emph{epistemic} uncertainty, the part of the uncertainty that comes from the data constraining the model only partially:
+\begin{equation}
+    \text{Var}_{\text{epistemic}}(\mathbf{x}^*) = \frac{1}{S} \sum_{s=1}^{S} \left( \hat{y}^{(s)}(\mathbf{x}^*) - \hat{y}^* \right)^2
+    \label{eq:epistemic}
+\end{equation}
+This spread behaves the way confidence should: where the data pin the parameters down, the sampled models agree and the spread is small; where they do not, the sampled models disagree and the spread is large. The model thus reports, for each individual prediction, how much the available evidence supports it. This is a signal a point-prediction model cannot give, and the one a risk assessor needs in order to judge how far to rely on a predicted value.
+
+\subsubsection{Per-chemical noise}
+
+The second change concerns the noise in the measurements themselves. The repeated-test variability documented in Figure~\ref{fig:rsd-distr} shows that testing the same chemical on the same species more than once can give substantially different results. The Bayesian reformulation above gives us the spread across plausible models given the observed data, but says nothing about this scatter between repeated tests of the same combination; it is a distinct kind of uncertainty, internal to the measurements rather than to the fit. We therefore model it directly, on the assumption that each chemical carries some inherent biological and experimental variability that should be estimated rather than ignored. Concretely, we stop treating a test result as a fixed ground truth and instead treat it as one sample from a per-chemical distribution, whose width the model learns and carries through to the downstream analysis.
+
+
+Standard regression models, including the base Bayesian Factorization Machine of \citet{rendle2011bayesian}, assume a single global noise level shared by all observations. We consider this too restrictive for ecotoxicity, where some chemicals produce consistent results while others are intrinsically variable. Our contribution is to give each chemical its own noise term. Concretely, each observed value is modelled as the factorization machine mean plus Gaussian noise whose magnitude is specific to the chemical:
+\begin{equation}
+    y_i \mid \mathbf{x}_i, \theta, \alpha_{c_i} \sim \mathcal{N}\left( \hat{y}_i(\theta), \alpha_{c_i}^{-1} \right)
+    \label{eq:likelihood}
+\end{equation}
+where $\alpha_c$ is the precision, the inverse of the noise variance, for chemical $c$. A high $\alpha_c$ describes a chemical whose tests are consistent, and a low $\alpha_c$ a chemical whose tests are highly variable. Because we keep all repeated measurements rather than averaging them, the model sees this spread directly and can estimate it.
+
+The per-chemical noise terms are themselves tied together by a shared prior whose scale is learned from all chemicals at once. A chemical with many observations has its noise term set mainly by the scatter of its own measurements around the model mean. A chemical with few observations has its noise term pulled towards the level typical of the dataset as a whole, so that a handful of measurements does not produce an extreme or unstable estimate. This is the same partial-pooling idea applied to the noise, and it lets rarely tested chemicals borrow information from the rest.
+
+The resulting per-chemical variance is the \emph{aleatoric} uncertainty, the irreducible measurement noise that more data cannot remove:
+\begin{equation}
+    \text{Var}_{\text{aleatoric}}(c^*) = \frac{1}{S} \sum_{s=1}^{S} \frac{1}{\alpha_{c^*}^{(s)}}
+    \label{eq:aleatoric}
+\end{equation}
+It is a property of the chemical and does not vary across species or other features, a simplification we return to in the limitations. Together, the two sources combine into a total predictive variance for each prediction:
+\begin{equation}
+    \text{Var}_{\text{total}}(\mathbf{x}^*, c^*) = \text{Var}_{\text{epistemic}}(\mathbf{x}^*) + \text{Var}_{\text{aleatoric}}(c^*)
+    \label{eq:total}
+\end{equation}
+For any species--chemical combination this total describes the range of LC50 values the model considers plausible, while keeping the two contributions separate: the epistemic part, which more testing could reduce, and the aleatoric part, which reflects the inherent noise of the test. Because the aleatoric part is a statement about the measurements themselves, it can be carried forward into hazard assessment, so that quantities derived from the predictions, such as Species Sensitivity Distributions and the hazardous concentrations taken from them, reflect both the model's uncertainty and the irreducible variability of the underlying tests. We show this in the Results.

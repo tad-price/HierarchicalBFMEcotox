@@ -49,7 +49,7 @@ import ssd_analysis
 # SSD WITH MCMC POSTERIOR SAMPLES
 # =============================================================================
 
-def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, seed=42):
+def plot_ssd_with_uncertainty(pred_df, df_obs, n_curves=2000, include_aleatoric=False, seed=42):
     """
     Generate an SSD with uncertainty by plotting individual MCMC posterior sample SSDs.
     
@@ -67,9 +67,14 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     - Epistemic uncertainty (correlated shifts across species from shared parameters)
     - Aleatoric uncertainty (independent noise per species from learned alpha_c)
     
+    The posterior ensemble is summarised as a 95% credible band and a median SSD,
+    and the traditional lognormal SSD (fitted to the observed species) is overlaid
+    on the same axes for direct comparison.
+
     Args:
-        pred_df: Predictions for target chemical (used for point estimate and metadata)
-        n_curves: Number of posterior samples to plot (default 2000, subsampled if needed)
+        pred_df: Predictions for target chemical (used for the species list and metadata)
+        df_obs: Observations for target chemical (for the traditional lognormal overlay)
+        n_curves: Number of posterior samples to use (default 2000, subsampled if needed)
         include_aleatoric: Whether to add aleatoric noise draws (default False)
         seed: Random seed for reproducibility
     """
@@ -168,25 +173,40 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     # Empirical CDF y-values
     y_cdf = np.arange(1, n_species + 1) / (n_species + 1)
     
-    # Point estimate (sorted mean predictions from full predictions file)
-    point_estimate = np.sort(pred_df["pred_mean"].values)
-    
-    # Compute summary statistics for HC5
+    # Ensemble summary statistics
     median_curve = np.percentile(all_ssd_curves, 50, axis=0)
     lower_95 = np.percentile(all_ssd_curves, 2.5, axis=0)
     upper_95 = np.percentile(all_ssd_curves, 97.5, axis=0)
-    
+
+    # Traditional lognormal SSD fitted to observed species means (for overlay).
+    # Uses the same mean/std (ddof=1) definition as compute_traditional_hcx so the
+    # overlay curve and the aggregate HC comparison are numerically consistent.
+    tox_obs = df_obs.groupby("species", observed=True)["y_true"].mean().dropna().values
+    mu_trad = tox_obs.mean()
+    std_trad = tox_obs.std(ddof=1)
+    n_obs = len(tox_obs)
+    y_obs = np.arange(1, n_obs + 1) / (n_obs + 1)
+
+    # Data-driven x-limits spanning the ensemble band and the observations
+    x_lo = float(min(lower_95.min(), tox_obs.min())) - 0.5
+    x_hi = float(max(upper_95.max(), tox_obs.max())) + 0.5
+    x_range = np.linspace(x_lo, x_hi, 300)
+
     # Plot
     fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Plot each posterior sample SSD as a transparent curve
-    for i in range(n_curves):
-        ax.plot(all_ssd_curves[i], y_cdf, color='steelblue', alpha=0.02, linewidth=0.5)
-    
-    # Overlay point estimate
-    ax.plot(point_estimate, y_cdf, 'k--', linewidth=1.5, alpha=0.7, 
-             label='Point Estimate (no uncertainty)', zorder=4)
-    
+
+    # Ensemble: shaded 95% credible band + median SSD
+    ax.fill_betweenx(y_cdf, lower_95, upper_95, color='steelblue', alpha=0.25,
+                     label='BFM 95% credible band')
+    ax.plot(median_curve, y_cdf, color='navy', linewidth=2, zorder=4,
+            label='BFM ensemble median')
+
+    # Traditional lognormal SSD + observed species
+    ax.plot(x_range, norm.cdf(x_range, mu_trad, std_trad), 'r-', linewidth=2, zorder=3,
+            label=f'Traditional SSD (n={n_obs})')
+    ax.scatter(np.sort(tox_obs), y_obs, c='black', s=40, zorder=5,
+               edgecolors='white', linewidths=0.5, label='Observed species')
+
     noise_label = "epistemic + aleatoric" if include_aleatoric else "epistemic only"
     ax.set_xlabel("Predicted Toxicity (Log mg/L)", fontsize=12)
     ax.set_ylabel("Fraction of Species Affected", fontsize=12)
@@ -195,7 +215,7 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     ax.legend(loc='lower right', fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.set_ylim(0, 1)
-    ax.set_xlim(-10, 10)
+    ax.set_xlim(x_lo, x_hi)
     
     safe_name = ssd_analysis.CHEMICAL_NAME.lower().replace(' ', '_').replace('-', '_')
     safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
@@ -222,7 +242,14 @@ def plot_ssd_with_uncertainty(pred_df, n_curves=2000, include_aleatoric=False, s
     print(f"{'HC5 Upper (97.5%)':<20} {hc5_upper:<15.3f} {np.exp(hc5_upper):<15.6f}")
     print(f"{'-'*50}")
     print(f"{'95% CI Width':<20} {hc5_width:<15.3f}")
-    
+
+    # HC20 (the metric reported in the paper's hazard-concentration section)
+    idx_hc20 = int(0.20 * n_species)
+    trad_hc20 = norm.ppf(0.20, loc=mu_trad, scale=std_trad)
+    print(f"\n{'HC20 Median (BFM)':<22} {median_curve[idx_hc20]:<15.3f}")
+    print(f"{'HC20 95% CI (BFM)':<22} [{lower_95[idx_hc20]:.3f}, {upper_95[idx_hc20]:.3f}]")
+    print(f"{'HC20 Traditional':<22} {trad_hc20:<15.3f}")
+
     return hc5_median, hc5_lower, hc5_upper
 
 
@@ -561,7 +588,7 @@ def main():
             sys.exit(1)
 
         # Generate MCMC uncertainty SSD
-        hc5_model, hc5_lower, hc5_upper = plot_ssd_with_uncertainty(pred_df_filtered)
+        hc5_model, hc5_lower, hc5_upper = plot_ssd_with_uncertainty(pred_df_filtered, df_obs_filtered)
 
         # Summary
         print("\n" + "="*60)

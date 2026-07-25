@@ -340,8 +340,13 @@ def plot_traditional_vs_novel_ssd(df_obs, pred_df):
     """
     Plot traditional SSD curve and novel SSD predictions on the same panel,
     along with the raw observations from the dataset.
-    
-    This creates a comprehensive comparison showing:
+
+    DEPRECATED for the paper: the "novel SSD" here is the empirical CDF of the
+    posterior-mean predictions, which under-disperses the lower tail and yields an
+    anti-conservative HCx. Use the posterior ensemble overlay in
+    ssd_mc_uncertainty.plot_ssd_with_uncertainty for figures and hazard concentrations.
+
+    This creates a comparison showing:
     1. Traditional SSD: Fitted normal curve to aggregated observations
     2. Novel SSD: Model predictions for all species (empirical CDF)
     3. Observations: Raw observed toxicity values
@@ -477,7 +482,9 @@ def main():
     hc5_traditional = plot_traditional_ssd(df_obs_filtered)
     plot_novel_ssd(pred_df_filtered)
     plot_novel_ssd_with_uncertainty(pred_df_filtered)
-    hc5_traditional_2, hc5_novel = plot_traditional_vs_novel_ssd(df_obs_filtered, pred_df_filtered)
+    # NOTE: plot_traditional_vs_novel_ssd (point-estimate "novel SSD" overlay) is retired.
+    # The point-estimate SSD under-disperses the lower tail; the paper uses the ensemble
+    # overlay from ssd_mc_uncertainty.plot_ssd_with_uncertainty instead.
 
     # Summary
     print("\n" + "="*60)
@@ -487,9 +494,7 @@ def main():
     print(f"Duration: {DURATION_HOURS}h")
     print(f"Observed species: {df_obs_filtered['species'].nunique()}")
     print(f"Predicted species: {len(pred_df_filtered)}")
-    print(f"\nHC5 Comparison:")
-    print(f"  Traditional: {hc5_traditional:.3f} ({np.exp(hc5_traditional):.6f} mg/L)")
-    print(f"  Novel:       {hc5_novel:.3f} ({np.exp(hc5_novel):.6f} mg/L)")
+    print(f"\nTraditional HC5: {hc5_traditional:.3f}")
     print(f"\nFor MCMC uncertainty analysis, run: python analysis/ssd_mc_uncertainty.py")
 
     print("\n" + "="*60)

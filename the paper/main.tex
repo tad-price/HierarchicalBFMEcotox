@@ -1,0 +1,71 @@
+
+\documentclass[journal=esthag,manuscript=article]{achemso}
+
+
+\usepackage[version=3]{mhchem} % Formula subscripts using \ce{}
+\usepackage{subcaption}
+\usepackage{booktabs}          % Better tables
+\usepackage{graphicx}          % Images
+\usepackage{amsmath}           % Math
+\usepackage{amssymb}           % \mathbb, used in the Supporting Information
+\usepackage{placeins}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.1}        % allow a page to be mostly float
+\renewcommand{\floatpagefraction}{0.8}
+\setcounter{topnumber}{3}
+\setcounter{totalnumber}{5}
+
+
+\author{Tadeusz Price}
+\affiliation[RIVM]{National Institute for Public Health and the Environment, Bilthoven, The Netherlands.}
+
+
+\author{Oliver Urs Lenz}
+\affiliation[SDM]{Department of Statistics, Data Science and Modelling, National Institute for Public Health and the Environment, Bilthoven, The Netherlands.}
+\alsoaffiliation[LIACS]{Leiden Institute of Advanced Computer Science, Leiden University, Leiden, the Netherlands}
+\alsoaffiliation[WINST]{Department of Mathematics, Computer Science and Statistics, Ghent University, Ghent, Belgium}
+
+\author{Leo Posthuma}
+\affiliation[DMG]{Centre for Sustainability, Environment and Health, National Institute for Public Health and the Environment, Bilthoven, The Netherlands.}
+\alsoaffiliation[Nijmegen]{Department of Environmental Science, Radboud University, Nijmegen, The Netherlands}
+
+\title{Uncertainty Quantification for Aquatic Ecotoxicity Prediction}
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% TODO Graphical abstract!!!! required by EST
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\begin{abstract}
+Aquatic ecosystems are threatened by thousands of chemicals, of which the hazard is often largely unknown. These hazard characteristics are derived from laboratory toxicity tests of individual chemicals on individual species. Part of those data consist of median Lethal Concentrations for 50\% of the test individuals (LC50), but for the overwhelming majority of chemicals in use, such data exist for only a small fraction of the species present in ecosystems. A growing body of research applies machine learning to bridge these gaps, predicting the hazard of data-poor and even untested chemicals. These approaches are promising, but before they can be relied on to set protective regulatory standards or support other decisions, apart from being accurate in general they must also quantify how far individual predictions can be trusted.
+
+We address this by using a Bayesian modelling framework, training a Bayesian Factorization Machine (BFM) on ecotox data, which predicts not just LC50 values, but also their expected variance. This uncertainty is separated in the model into a reducible part arising from limited data (epistemic) and an irreducible part arising from inter-test and biological variability (aleatoric). The BFM achieves state-of-the-art accuracy in filling the testing gaps, but more importantly we show how its uncertainty estimates propagate into downstream risk assessment. They carry through to Species Sensitivity Distributions (SSDs) and the hazardous concentrations derived from them, indicating when predicted hazard data can and cannot be relied on for practical decision support. The same approach is not specific to ecotoxicology, and applies wherever decisions rest on sparse and noisy data.
+\end{abstract}
+
+
+
+
+\input{intro}
+
+
+\input{matandmeth}
+
+
+\input{results}
+
+\input{conclusion_limitations}
+
+\input{supporting_information}
+
+
+\begin{acknowledgement}
+\end{acknowledgement}
+
+
+\bibliography{references}
+
+\end{document}
