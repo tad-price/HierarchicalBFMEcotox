@@ -60,22 +60,14 @@ class HierarchicalBFM:
         w  = np.zeros(p)
         v  = rng.normal(0.0, 0.1, size=(p, self.k))
         
-        # Initialize per-group precision
-        # Start with global estimation to be safe
-        alpha_vec = np.ones(self.n_groups) 
+        # Initialize per-group precision to unity
+        alpha_vec = np.ones(self.n_groups)
 
         # Hyper-parameters for w and v
         mu_w = 0.0; lam_w = 1.0
         mu_v = 0.0; lam_v = 1.0
 
-        # Pre-compute group indices for fast SSE calculation
-        # group_indices[g] = list of row indices for group g
-        # For speed, we can just use boolean masks or iterate if n_groups is small.
-        # But n_groups can be large (~2000). 
-        # Let's pre-calculate sum of squared errors per group?
-        # Better: use np.bincount for weighted sums if groups are 0..N-1
-        
-        # Helpers
+        # Per-group SSE is accumulated with np.bincount (groups are 0..n_groups-1).
         X2 = X.copy(); X2.data **= 2
         q  = X @ v
         interact = 0.5 * ((q ** 2) - X2 @ (v ** 2)).sum(axis=1)

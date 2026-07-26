@@ -135,7 +135,7 @@ def plot_uncertainty_vs_observations(df):
     Panel A: Epistemic Uncertainty
     - Epistemic uncertainty = variance across posterior samples of predictions
     - Each prediction depends on BOTH the chemical's and species' latent factors
-    - We plot the MEAN epistemic uncertainty across all OOF observations for each chemical
+    - Plots the MEAN epistemic uncertainty across all OOF observations for each chemical
     - More observations for a chemical → better-constrained chemical latent factors →
       lower contribution to epistemic uncertainty from the chemical side
     - Expected: NEGATIVE correlation (more data → lower uncertainty)
@@ -326,7 +326,7 @@ def plot_example_predictions(df):
                   c='#e41a1c', s=50, marker='x', linewidths=2, zorder=5,
                   label='Observed (mean)')
         
-        # Add observation variability where we have replicates (±1.96 SD for consistency)
+        # Add observation variability where replicates exist (±1.96 SD)
         has_replicates = species_agg["n_obs"] > 1
         if has_replicates.any():
             ax.errorbar(species_agg.loc[has_replicates, "y_true_mean"],

@@ -102,7 +102,7 @@ def plot_predicted_vs_measured_correlation(df, duration_hours=48):
     """
     Create a correlation plot of model predicted toxicities vs measured toxicities.
     
-    For chemicals where we have measurements:
+    For chemicals with measurements:
     - Filter to specified duration (default 48hr)
     - Take the mean observation and mean prediction per chemical/species
     - Scatter the results and compute correlation statistics
@@ -178,7 +178,7 @@ def plot_predicted_vs_measured_correlation(df, duration_hours=48):
     ax.set_aspect('equal')
     ax.grid(True, alpha=0.3)
     
-    # Statistics box (simplified)
+    # Statistics box
     stats_text = (f"Pearson r = {r:.3f}\n"
                   f"N = {n_pairs:,}")
     props = dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='gray')

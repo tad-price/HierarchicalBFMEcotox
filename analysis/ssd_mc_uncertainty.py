@@ -35,7 +35,7 @@ from scipy.stats import norm
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
 
-# Import shared utilities from ssd_analysis (not config — we set our own via set_target)
+# Shared utilities from ssd_analysis; the target chemical is set via set_target().
 from ssd_analysis import (
     DURATION_HOURS, OUTPUT_DIR,
     load_observations, load_full_predictions,
@@ -268,7 +268,7 @@ def compute_hcx_all_chemicals(percentiles=[20], n_samples=None,
       3. Extract HCx values (e.g. 5th and 20th percentile of predictions)
 
     Across the N posterior samples this yields N HCx values per chemical,
-    from which we compute: mean, std, min, max, median, and 95% CI.
+    summarised as mean, std, min, max, median, and 95% CI.
 
     Args:
         percentiles: List of HCx percentiles to compute (default [20])
@@ -569,7 +569,7 @@ def main():
             print(f"    Std diff:      {diff.std():.3f}")
 
     else:
-        # ---- Original single-chemical SSD plot mode ----
+        # ---- Single-chemical SSD plot mode ----
         print("="*60)
         print(f"SSD MONTE CARLO UNCERTAINTY ANALYSIS")
         print(f"Target: CAS {ssd_analysis.TARGET_CAS} at {DURATION_HOURS}h")

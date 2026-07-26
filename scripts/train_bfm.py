@@ -144,7 +144,7 @@ def main():
         enc.fit(full_data[[col]])
 
     # 3. Prepare Groups (CAS indices) for Hierarchical Model
-    # We need a mapping from CAS string to integer index 0..N_groups-1
+    # Map each CAS string to an integer index 0..N_groups-1
     unique_cas = full_data["CAS"].unique()
     cas_to_idx = {cas: i for i, cas in enumerate(unique_cas)}
     groups = full_data["CAS"].map(cas_to_idx).values.astype(int)

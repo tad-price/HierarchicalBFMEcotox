@@ -25,10 +25,17 @@ hierarchical-bfm-paper/
 │   ├── train_bfm.py              # Train with cross-validation (OOF predictions)
 │   └── generate_predictions.py   # Generate full prediction matrix
 │
-├── analysis/                     # Analysis scripts
-│   ├── analyze_results.py        # Model performance & uncertainty analysis
+├── analysis/                     # Analysis scripts (figures & tables)
+│   ├── dataset_figures.py        # Dataset summary tables and rank/RSD figures
+│   ├── analyze_results.py        # Predictive accuracy & bias analysis
+│   ├── uncertainty_figures.py    # Uncertainty vs data availability
+│   ├── variance_decomposition.py # Aleatoric vs epistemic decomposition
+│   ├── calibration_figures.py    # Posterior predictive calibration curve
 │   ├── ssd_analysis.py           # Species Sensitivity Distribution plots
-│   └── compare_hc5.py            # HC5 comparison (traditional vs BFM)
+│   ├── ssd_mc_uncertainty.py     # SSDs & HC20 with posterior uncertainty
+│   └── hcx_plots.py              # HC20 forest & correlation plots
+│
+├── generate_paper_figures.sh     # Runs all analysis scripts in order
 │
 ├── data/
 │   └── raw/                      # Raw data files (see Data Setup)
@@ -71,7 +78,7 @@ python scripts/train_bfm.py
 ```
 It supports the following CLI args:
 
-- `--n_folds`: Number of cross-validation folds (default: 3)
+- `--n_folds`: Number of cross-validation folds (default: 3; the paper uses 5)
 - `--n_iter`: Number of Gibbs sampling iterations (default: 200)
 - `--n_burn`: Number of burn-in iterations (default: 100)
 
@@ -95,36 +102,45 @@ Supports --n_iter and --n_burn in cli.
 
 ### 3. Run Analysis
 
-After training, run the analysis scripts:
+After training and generating predictions, reproduce all paper figures and tables at once:
 
 ```bash
-# Model performance and uncertainty analysis
+bash generate_paper_figures.sh
+```
+
+Or run individual scripts, for example:
+
+```bash
+# Dataset summary tables and figures
+python analysis/dataset_figures.py
+
+# Predictive accuracy and bias analysis
 python analysis/analyze_results.py
 
-# Species Sensitivity Distribution plots
-python analysis/ssd_analysis.py
+# Species Sensitivity Distributions for one chemical
+python analysis/ssd_analysis.py --cas 1912-24-9
+python analysis/ssd_mc_uncertainty.py --cas 1912-24-9
 
-# HC5 comparison across all chemicals
-python analysis/compare_hc5.py
+# HC20 across all chemicals (traditional vs BFM), then plots
+python analysis/ssd_mc_uncertainty.py --all-hcx
+python analysis/hcx_plots.py
 ```
 
 **Outputs to `outputs/figures/`:**
-- `predicted_vs_measured_48h.png`
-- `bias_analysis_48h.png`
-- `uncertainty_exploration.png`
-- `aleatoric_calibration.png`
-- `ssd_*.png` - Various SSD plots
-- `hc5_correlation_48h.png`
-- `hc5_comparison_48h.csv`
+- `predicted_vs_measured_48h.png`, `bias_analysis_48h.png`
+- `uncertainty_vs_observations_48h.png`, `calibration_curve.png`
+- `ssd_*.png` - Traditional, novel, and posterior-uncertainty SSD plots
+- `hc20_forest_plot.png`, `hc20_correlation_trad_vs_mc.png`
+- `table1_summary.csv`, `table2_aleatoric_calibration.csv`, `hcx_comparison_48h.csv`
 
-Some non-image data is also output in the terminal directly. 
+Some non-image data is also printed to the terminal directly. 
 
 ## Model Details
 
 The Hierarchical BFM uses Gibbs sampling with:
 - **Latent dimensionality**: k=32
-- **Iterations**: 200 (100 burn-in) [in the paper 2000 iterations with 50 burn-in is used, depending on hardware this can take multiple hours to run]
-- **Per-chemical precision**: α_c ~ Gamma(a₀, b₀) with a₀=b₀=1
+- **Iterations**: 200 (100 burn-in) by default [the paper uses 2000 iterations with 100 burn-in → 1,900 posterior samples; depending on hardware this can take multiple hours to run]
+- **Per-chemical precision**: α_c ~ Gamma(a₀, b₀), with a₀ set by empirical Bayes and b₀ learned via a Gamma hyperprior
 
 Key features:
 - Categorical features: species, CAS (chemical), duration, taxonomic family, taxonomic class

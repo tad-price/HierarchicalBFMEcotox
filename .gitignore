@@ -37,3 +37,10 @@ analysis/latent_space_deserts.py
 !outputs/models/.gitkeep
 !outputs/figures/.gitkeep
 !notebooks/.gitkeep
+the paper/
+
+# Reference-paper PDFs kept locally in src/data (not part of the code)
+src/data/*.pdf
+
+# Superseded pre-rework figure snapshot (kept locally)
+outputs/figures/b_0_old/

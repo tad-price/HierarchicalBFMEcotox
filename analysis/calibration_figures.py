@@ -5,14 +5,14 @@ Validates whether the model's total predictive uncertainty is well-calibrated:
 for a nominal X% credible interval, does the true value fall inside roughly
 X% of the time?
 
-For each out-of-fold observation we have S posterior samples
+Each out-of-fold observation has S posterior samples
 { y_hat^(s), 1/alpha_c^(s) }. The posterior predictive distribution is the
 mixture
     p(y* | x*, D) = (1/S) sum_s N( y_hat^(s)(x*), 1/alpha_c^(s) ).
-We approximate it by drawing one Monte Carlo sample from each Gaussian
-component, then take empirical quantiles to construct credible intervals at a
-range of nominal levels. Coverage at level p is the fraction of OOF
-observations whose true y falls inside the interval.
+It is approximated by drawing one Monte Carlo sample from each Gaussian
+component; empirical quantiles then give credible intervals at a range of
+nominal levels. Coverage at level p is the fraction of OOF observations
+whose true y falls inside the interval.
 
 Requires:
 - outputs/models/oof_pred_samples.npy        shape (N, S)
@@ -97,8 +97,8 @@ def coverage_at_levels(pp_draws, y_true, levels):
     y_true:   (N,)
     levels:   1-D array of nominal coverage levels in (0, 1)
 
-    For each level p we take the central interval [q_lo, q_hi] with
-    q_lo = (1-p)/2 and q_hi = (1+p)/2 quantiles per row, then return the
+    For each level p, the central interval [q_lo, q_hi] uses the
+    q_lo = (1-p)/2 and q_hi = (1+p)/2 quantiles per row; returns the
     fraction of rows where y_true falls in [q_lo, q_hi].
     """
     lo_q = (1.0 - levels) / 2.0

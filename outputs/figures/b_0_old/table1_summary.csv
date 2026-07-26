@@ -1,7 +1,0 @@
-Statistic,Value
-Number of unique chemicals,3295
-Number of unique species,1267
-Number of durations,4
-"Number of unique (species, chemical, duration) triplets observed",31319
-Total number of observations,70670
-Sparsity (species*chemical matrix),99.5%

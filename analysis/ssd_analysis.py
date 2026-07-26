@@ -341,10 +341,10 @@ def plot_traditional_vs_novel_ssd(df_obs, pred_df):
     Plot traditional SSD curve and novel SSD predictions on the same panel,
     along with the raw observations from the dataset.
 
-    DEPRECATED for the paper: the "novel SSD" here is the empirical CDF of the
-    posterior-mean predictions, which under-disperses the lower tail and yields an
-    anti-conservative HCx. Use the posterior ensemble overlay in
-    ssd_mc_uncertainty.plot_ssd_with_uncertainty for figures and hazard concentrations.
+    The "novel SSD" here is the empirical CDF of the posterior-mean predictions,
+    which under-disperses the lower tail and yields an anti-conservative HCx. The
+    posterior ensemble overlay in ssd_mc_uncertainty.plot_ssd_with_uncertainty is
+    used for figures and hazard concentrations instead.
 
     This creates a comparison showing:
     1. Traditional SSD: Fitted normal curve to aggregated observations
@@ -482,9 +482,9 @@ def main():
     hc5_traditional = plot_traditional_ssd(df_obs_filtered)
     plot_novel_ssd(pred_df_filtered)
     plot_novel_ssd_with_uncertainty(pred_df_filtered)
-    # NOTE: plot_traditional_vs_novel_ssd (point-estimate "novel SSD" overlay) is retired.
-    # The point-estimate SSD under-disperses the lower tail; the paper uses the ensemble
-    # overlay from ssd_mc_uncertainty.plot_ssd_with_uncertainty instead.
+    # plot_traditional_vs_novel_ssd (point-estimate overlay) is not used: it
+    # under-disperses the lower tail. Figures use the posterior ensemble overlay
+    # in ssd_mc_uncertainty.plot_ssd_with_uncertainty.
 
     # Summary
     print("\n" + "="*60)
