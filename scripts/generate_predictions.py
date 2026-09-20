@@ -4,7 +4,7 @@ generate_predictions.py - Generate predictions for all (chemical, species, durat
 This script trains the Hierarchical BFM on the entire dataset (no cross-validation)
 and generates predictions with uncertainty estimates for all possible triplets.
 
-MEMORY-EFFICIENT: Processes one chemical at a time to avoid OOM errors.
+Predicts one chemical at a time to bound peak memory.
 
 Outputs to outputs/models/:
 - trained_model.pkl: Trained model with encoders and metadata
@@ -171,7 +171,7 @@ def main():
         "chem_props": chem_props,
         "y_mean": y_mean,
     }, model_path)
-    print(f"   Model saved successfully!")
+    print("   Model saved successfully!")
 
     # 6. Generate predictions ONE CHEMICAL AT A TIME (memory-efficient)
     print("\n5. Generating predictions (one chemical at a time)...")

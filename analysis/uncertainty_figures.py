@@ -7,7 +7,7 @@ This script generates two key figures for the Uncertainty Calibration section:
    relate to the amount of data per chemical. Epistemic should decrease with more
    data (model confidence increases); aleatoric is the learned irreducible noise.
 
-2. Example Predictions with Uncertainty: For 5 selected chemicals, shows model
+2. Example Predictions with Uncertainty: For the selected chemicals, shows model
    predictions with uncertainty bars compared to actual observed measurements.
 
 Usage:
@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import sklearn.model_selection as sk_model
 from scipy.stats import spearmanr
 
 # Add src to path
@@ -29,12 +30,47 @@ from data.load_ecotox import load_ecotox_data
 
 # Configuration
 DURATION_HOURS = 48
+CV_N_FOLDS = 5  # must match the --n_folds used to produce the saved OOF arrays
 MIN_OBS_FOR_EXAMPLES = 10  # Minimum observations for example chemicals
-N_EXAMPLE_CHEMICALS = 5
+N_EXAMPLE_CHEMICALS = 4
+# Excluded from the example panel: too few species over too narrow a toxicity
+# range for the panel to show any contrast between predictions.
+EXCLUDE_FROM_EXAMPLES = ["2,6-Dimethylquinoline"]
 RANDOM_SEED = 42
 
 OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+
+
+def cold_start_chemicals(df, n_folds=CV_N_FOLDS):
+    """
+    Return the CAS codes that are absent from the training partition of at least
+    one cross-validation fold.
+
+    Reproduces the grouped split of scripts/train_bfm.py: GroupKFold on the
+    (CAS, species, duration) triplet identifier. A chemical whose rows all land
+    in one held-out fold is never seen by that fold's sampler, so its
+    CAS-specific parameters stay at the prior and its epistemic variance is
+    deflated. Such chemicals carry no information about the relationship between
+    uncertainty and data availability and are dropped from the per-chemical
+    analyses.
+
+    This tests the condition directly. The earlier rule of thumb (drop chemicals
+    with fewer observations than there are folds) both kept chemicals that are
+    genuinely cold-start and dropped chemicals that are not.
+    """
+    d = df.copy()
+    d["duration"] = pd.Categorical(d["duration"].astype(int))
+    triplet_id = pd.factorize(
+        d["CAS"].astype(str) + "_"
+        + d["species"].astype(str) + "_"
+        + d["duration"].astype(str)
+    )[0]
+    cas = df["CAS"].values
+    cold = set()
+    for tr_idx, va_idx in sk_model.GroupKFold(n_splits=n_folds).split(d, groups=triplet_id):
+        cold |= set(cas[va_idx]) - set(cas[tr_idx])
+    return cold
 
 
 def load_oof_data():
@@ -102,59 +138,22 @@ def load_full_predictions():
     return pred_df
 
 
-def load_observation_counts():
-    """Load observation counts per chemical from the raw data."""
-    DATA_DIR = ROOT_DIR / "data" / "raw"
-    full_data, _, _ = load_ecotox_data(
-        adore_path=DATA_DIR / "ecotox_mortality_processed.csv",
-        chemicals_path=DATA_DIR / "ecotox_properties_with-oecd-function.csv",
-        use_molar=False,
-        use_selfies=False, use_mol2vec=False, use_fingerprint=False,
-        shuffle=True, random_state=42
-    )
-    
-    # Count observations per CAS at 48h
-    df_48h = full_data[full_data["duration"].astype(int) == DURATION_HOURS]
-    obs_counts = df_48h.groupby("CAS", observed=True).agg({
-        "chem_name": "first"
-    }).reset_index()
-    obs_counts["n_obs"] = df_48h.groupby("CAS", observed=True).size().values
-    
-    return obs_counts
-
-
 def plot_uncertainty_vs_observations(df):
     """
-    Plot how epistemic and aleatoric uncertainty relate to observation count per chemical.
-    
-    Uses OUT-OF-FOLD predictions, which provide more honest uncertainty estimates
-    since each observation's uncertainty was estimated by a model that did not train on it.
-    
-    SCIENTIFIC INTERPRETATION:
-    
-    Panel A: Epistemic Uncertainty
-    - Epistemic uncertainty = variance across posterior samples of predictions
-    - Each prediction depends on BOTH the chemical's and species' latent factors
-    - Plots the MEAN epistemic uncertainty across all OOF observations for each chemical
-    - More observations for a chemical → better-constrained chemical latent factors →
-      lower contribution to epistemic uncertainty from the chemical side
-    - Expected: NEGATIVE correlation (more data → lower uncertainty)
-    
-    Panel B: Aleatoric Uncertainty  
-    - Aleatoric uncertainty (αc) is learned PER-CHEMICAL (constant across species)
-    - Represents the model's posterior estimate of residual variance for that chemical
-    - The posterior for αc depends on the residual variance observed for that chemical
-    - With more observations, the posterior is more data-driven (less prior-influenced)
-    - Negative correlation may indicate: (1) well-tested chemicals have standardized
-      protocols yielding lower noise, (2) prior is conservative and more data reveals
-      true lower variance, or (3) selection bias in which chemicals are heavily tested
-    
+    Mean epistemic and aleatoric SD per chemical against that chemical's
+    observation count, one panel each, with Spearman correlations.
+
+    Uses out-of-fold predictions, so each observation's uncertainty comes from a
+    model that did not train on it. Epistemic SD is averaged over the chemical's
+    observations at the target duration; aleatoric SD is averaged too, since the
+    out-of-fold value differs between folds.
+
     Args:
         df: DataFrame from load_oof_data() with columns including CAS, duration,
             epistemic_sd, aleatoric_sd
     """
     print("\n" + "="*60)
-    print("FIGURE 1: Uncertainty vs Number of Observations (OOF)")
+    print("Uncertainty vs number of observations (out-of-fold)")
     print("="*60)
     
     # Count TOTAL observations per chemical (all durations), since alpha_c
@@ -177,17 +176,17 @@ def plot_uncertainty_vs_observations(df):
     # Merge with total observation counts (all durations)
     chem_stats = chem_stats.merge(total_obs_per_chem, on="CAS", how="left")
     
-    # Exclude cold-start chemicals: those with fewer total observations than the
-    # number of CV folds (3). These chemicals have folds where zero training data
-    # exists for that CAS, so Gibbs never updates their CAS-specific parameters,
-    # producing artificially low epistemic uncertainty.
-    N_FOLDS = 3
+    # Exclude cold-start chemicals: those absent from the training partition of
+    # at least one fold, so that Gibbs never updates their CAS-specific
+    # parameters and their epistemic uncertainty comes out artificially low.
+    cold = cold_start_chemicals(df)
     n_before = len(chem_stats)
-    chem_stats = chem_stats[chem_stats["n_obs_total"] >= N_FOLDS].copy()
+    chem_stats = chem_stats[~chem_stats["CAS"].isin(cold)].copy()
     n_excluded = n_before - len(chem_stats)
     
     print(f"Chemicals at {DURATION_HOURS}h: {n_before}")
-    print(f"Excluded {n_excluded} cold-start chemicals (< {N_FOLDS} total obs)")
+    print(f"Excluded {n_excluded} cold-start chemicals "
+          f"(absent from the training partition of >=1 of {CV_N_FOLDS} folds)")
     print(f"Remaining: {len(chem_stats)}")
     print(f"Total observation range: {chem_stats['n_obs_total'].min()} - {chem_stats['n_obs_total'].max()}")
     
@@ -195,12 +194,15 @@ def plot_uncertainty_vs_observations(df):
     rho_epist, p_epist = spearmanr(chem_stats["n_obs_total"], chem_stats["epistemic_sd"])
     rho_aleat, p_aleat = spearmanr(chem_stats["n_obs_total"], chem_stats["aleatoric_sd"])
     
-    print(f"\nSpearman correlations:")
+    print("\nSpearman correlations:")
     print(f"  Epistemic SD vs # obs: ρ = {rho_epist:.3f} (p = {p_epist:.2e})")
     print(f"  Aleatoric SD vs # obs: ρ = {rho_aleat:.3f} (p = {p_aleat:.2e})")
     
     # Create figure with two panels
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    # No in-panel titles: the (a)/(b) mapping and the Spearman rho are carried by
+    # the manuscript caption and body text respectively. The rho values are still
+    # printed above, which is where they should be read from when updating them.
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.2))
     
     # --- Panel A: Epistemic Uncertainty ---
     ax1 = axes[0]
@@ -208,9 +210,7 @@ def plot_uncertainty_vs_observations(df):
                 c='#377eb8', s=25, alpha=0.6, edgecolors='white', linewidths=0.5)
     ax1.set_xscale('log')
     ax1.set_xlabel("Total Observations per Chemical (log scale)", fontsize=12)
-    ax1.set_ylabel("Mean Epistemic SD (log mg/L)", fontsize=12)
-    ax1.set_title(f"(a) Epistemic Uncertainty vs Data Availability\n"
-                  f"Spearman ρ = {rho_epist:.3f}", fontsize=13)
+    ax1.set_ylabel("Mean epistemic SD (log mg/L)", fontsize=12)
     ax1.grid(True, alpha=0.3)
     
     # --- Panel B: Aleatoric Uncertainty ---
@@ -219,9 +219,7 @@ def plot_uncertainty_vs_observations(df):
                 c='#e41a1c', s=25, alpha=0.6, edgecolors='white', linewidths=0.5)
     ax2.set_xscale('log')
     ax2.set_xlabel("Total Observations per Chemical (log scale)", fontsize=12)
-    ax2.set_ylabel("Aleatoric SD (log mg/L)", fontsize=12)
-    ax2.set_title(f"(b) Aleatoric Uncertainty vs Data Availability\n"
-                  f"Spearman ρ = {rho_aleat:.3f}", fontsize=13)
+    ax2.set_ylabel("Mean aleatoric SD (log mg/L)", fontsize=12)
     ax2.grid(True, alpha=0.3)
     
     plt.tight_layout()
@@ -236,7 +234,7 @@ def plot_uncertainty_vs_observations(df):
 
 def plot_example_predictions(df):
     """
-    Plot predictions with uncertainty bars vs actual observations for 5 selected chemicals.
+    Plot predictions with uncertainty bars vs actual observations for the selected chemicals.
     
     For each chemical:
     - For each species tested, show predicted toxicity with uncertainty bars
@@ -245,7 +243,7 @@ def plot_example_predictions(df):
       relates to prediction quality
     """
     print("\n" + "="*60)
-    print("FIGURE 2: Example Predictions with Uncertainty")
+    print("Example predictions with uncertainty")
     print("="*60)
     
     np.random.seed(RANDOM_SEED)
@@ -264,20 +262,25 @@ def plot_example_predictions(df):
     eligible = chem_counts[chem_counts["n_obs"] >= MIN_OBS_FOR_EXAMPLES]
     print(f"Chemicals with ≥{MIN_OBS_FOR_EXAMPLES} observations at {DURATION_HOURS}h: {len(eligible)}")
     
-    if len(eligible) < N_EXAMPLE_CHEMICALS:
+    # Draw the excluded chemicals as well, then drop them, so that the retained
+    # panels do not depend on how many are excluded
+    n_draw = N_EXAMPLE_CHEMICALS + len(EXCLUDE_FROM_EXAMPLES)
+    if len(eligible) < n_draw:
         print(f"Warning: Only {len(eligible)} eligible chemicals, using all of them")
         selected = eligible
     else:
-        # Select 5 random chemicals
-        selected = eligible.sample(n=N_EXAMPLE_CHEMICALS, random_state=RANDOM_SEED)
-    
-    print(f"\nSelected chemicals:")
+        selected = eligible.sample(n=n_draw, random_state=RANDOM_SEED)
+    selected = selected[~selected["chem_name"].isin(EXCLUDE_FROM_EXAMPLES)]
+    selected = selected.head(N_EXAMPLE_CHEMICALS)
+
+    print("\nSelected chemicals:")
     for _, row in selected.iterrows():
         print(f"  {row['chem_name']} (CAS {row['CAS']}): {row['n_obs']} observations")
-    
+
     # Create figure with subplots
-    fig, axes = plt.subplots(N_EXAMPLE_CHEMICALS, 1, figsize=(12, 3.5 * N_EXAMPLE_CHEMICALS))
-    if N_EXAMPLE_CHEMICALS == 1:
+    n_panels = len(selected)
+    fig, axes = plt.subplots(n_panels, 1, figsize=(12, 3.5 * n_panels))
+    if n_panels == 1:
         axes = [axes]
     
     for idx, (_, chem_row) in enumerate(selected.iterrows()):
@@ -308,18 +311,20 @@ def plot_example_predictions(df):
         y_positions = np.arange(n_species)
         
         # Plot decomposed uncertainty around predictions:
-        # Outer bar (lighter): total uncertainty = epistemic + aleatoric
+        # Outer bar (lighter): total uncertainty = epistemic + aleatoric.
+        # Labelled as the total, not as the aleatoric component: the aleatoric
+        # part is the width this bar adds to the inner one, not the bar itself.
         ax.errorbar(species_agg["y_pred"], y_positions, 
                    xerr=1.96 * species_agg["total_sd"],
                    fmt='none', ecolor='#a6cee3', elinewidth=3, capsize=0, alpha=0.8,
-                   label='Aleatoric component')
+                   label='Total: epistemic + aleatoric (±1.96σ)')
         
         # Inner bar (darker): epistemic uncertainty only
         ax.errorbar(species_agg["y_pred"], y_positions, 
                    xerr=1.96 * species_agg["epistemic_sd"],
                    fmt='o', color='#377eb8', markersize=5, 
                    ecolor='#377eb8', elinewidth=2, capsize=0, alpha=0.8,
-                   label='Epistemic component')
+                   label='Epistemic only (±1.96σ)')
         
         # Overlay actual observations
         ax.scatter(species_agg["y_true_mean"], y_positions, 
@@ -351,7 +356,7 @@ def plot_example_predictions(df):
                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     plt.suptitle(f"Model Predictions vs Observed Toxicity ({DURATION_HOURS}h exposure)\n"
-                 "Dark blue = Epistemic, Light blue = Aleatoric, Red = Observed",
+                 "Dark blue = epistemic, light blue = total, red = observed",
                  fontsize=13, fontweight='bold', y=1.01)
     plt.tight_layout()
     
@@ -369,10 +374,8 @@ def main():
     # Load OOF data (used by both figures)
     df = load_oof_data()
     
-    # Figure 1: Uncertainty vs observation count (per chemical)
     plot_uncertainty_vs_observations(df)
     
-    # Figure 2: Example predictions with uncertainty bars
     plot_example_predictions(df)
     
     print("\n" + "="*60)

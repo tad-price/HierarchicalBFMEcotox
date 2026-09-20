@@ -13,8 +13,7 @@ Requires:
 - outputs/models/trained_model.pkl
 - outputs/models/full_predictions.parquet
 
-Outputs figures to:
-- outputs/figures/ssd_analysis/
+Writes to outputs/figures/.
 
 Usage:
     python analysis/ssd_mc_uncertainty.py --cas 1912-24-9
@@ -224,7 +223,7 @@ def plot_ssd_with_uncertainty(pred_df, df_obs, n_curves=2000, include_aleatoric=
     print(f"Saved: {output_path}")
     plt.close()
     
-    # HC5 results
+    # HC5 results. Concentrations are log10 mg/L, so mg/L is 10**x, not exp(x).
     print(f"\n{'='*60}")
     print("HC5 RESULTS (5% of species affected)")
     print(f"{'='*60}")
@@ -237,9 +236,9 @@ def plot_ssd_with_uncertainty(pred_df, df_obs, n_curves=2000, include_aleatoric=
     
     print(f"\n{'Metric':<20} {'Log mg/L':<15} {'mg/L':<15}")
     print(f"{'-'*50}")
-    print(f"{'HC5 Median':<20} {hc5_median:<15.3f} {np.exp(hc5_median):<15.6f}")
-    print(f"{'HC5 Lower (2.5%)':<20} {hc5_lower:<15.3f} {np.exp(hc5_lower):<15.6f}")
-    print(f"{'HC5 Upper (97.5%)':<20} {hc5_upper:<15.3f} {np.exp(hc5_upper):<15.6f}")
+    print(f"{'HC5 Median':<20} {hc5_median:<15.3f} {10.0 ** hc5_median:<15.6f}")
+    print(f"{'HC5 Lower (2.5%)':<20} {hc5_lower:<15.3f} {10.0 ** hc5_lower:<15.6f}")
+    print(f"{'HC5 Upper (97.5%)':<20} {hc5_upper:<15.3f} {10.0 ** hc5_upper:<15.6f}")
     print(f"{'-'*50}")
     print(f"{'95% CI Width':<20} {hc5_width:<15.3f}")
 
@@ -571,7 +570,7 @@ def main():
     else:
         # ---- Single-chemical SSD plot mode ----
         print("="*60)
-        print(f"SSD MONTE CARLO UNCERTAINTY ANALYSIS")
+        print("SSD MONTE CARLO UNCERTAINTY ANALYSIS")
         print(f"Target: CAS {ssd_analysis.TARGET_CAS} at {DURATION_HOURS}h")
         print("="*60)
 
@@ -597,8 +596,8 @@ def main():
         print(f"Chemical: {ssd_analysis.CHEMICAL_NAME}")
         print(f"Duration: {DURATION_HOURS}h")
         print(f"Predicted species: {len(pred_df_filtered)}")
-        print(f"\nMCMC HC5:")
-        print(f"  Median:  {hc5_model:.3f} ({np.exp(hc5_model):.6f} mg/L)")
+        print("\nMCMC HC5:")
+        print(f"  Median:  {hc5_model:.3f} ({10.0 ** hc5_model:.6f} mg/L)")
         print(f"  95% CI:  [{hc5_lower:.3f}, {hc5_upper:.3f}]")
         print(f"  CI Width: {hc5_upper - hc5_lower:.3f}")
 

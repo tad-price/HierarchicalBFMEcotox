@@ -14,33 +14,40 @@ env/
 
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
 
 .ipynb_checkpoints/
-*.ipynb
 
 .DS_Store
 Thumbs.db
 
+# Input data: obtain from the ADORE repository, see data/raw/README.md
 data/raw/*.csv
 
-
+# Model artifacts: regenerate with scripts/train_bfm.py and
+# scripts/generate_predictions.py (too large to version)
 outputs/models/**/*.pkl
 outputs/models/**/*.parquet
 outputs/models/**/*.npy
-outputs/figures/latent_space
-analysis/latent_space_deserts.py
+outputs/models_pairCV/
+outputs/rank_sweep/*.npz
+outputs/rank_sweep/*.log
+
+# Superseded pre-rework snapshots, kept locally
+outputs/figures/b_0_old/
+outputs/figures/latent_space/
+outputs/models/b_0_old/
+
+# Reference PDFs kept locally alongside the source
+src/data/*.pdf
+
+# Manuscript sources, maintained separately
+the paper/
 
 !data/raw/.gitkeep
 !outputs/models/.gitkeep
 !outputs/figures/.gitkeep
 !notebooks/.gitkeep
-the paper/
-
-# Reference-paper PDFs kept locally in src/data (not part of the code)
-src/data/*.pdf
-
-# Superseded pre-rework figure snapshot (kept locally)
-outputs/figures/b_0_old/

@@ -3,16 +3,15 @@ analyze_results.py - Analysis of Hierarchical BFM Results
 
 This script analyzes the out-of-fold predictions from the hierarchical BFM model,
 generating diagnostic plots and statistics for:
-1. Model performance (RMSE, correlation) → Paper Figure 3
-2. Prediction bias analysis → Paper Figure 4
+- predicted vs measured correlation
+- residual bias diagnostics
 
 Requires:
 - outputs/models/oof_mean.npy
 - outputs/models/oof_epistemic.npy
 - outputs/models/oof_aleatoric.npy
 
-Outputs figures to:
-- outputs/figures/
+Writes to outputs/figures/.
 
 Usage:
     python analysis/analyze_results.py
@@ -147,7 +146,7 @@ def plot_predicted_vs_measured_correlation(df, duration_hours=48):
     rmse = np.sqrt(np.mean((y_predicted - y_measured) ** 2))
     mae = np.mean(np.abs(y_predicted - y_measured))
     
-    print(f"\nCorrelation Statistics:")
+    print("\nCorrelation Statistics:")
     print(f"   Pearson r:  {r:.4f}")
     print(f"   R²:         {r_squared:.4f}")
     print(f"   p-value:    {p_value:.2e}")
@@ -263,18 +262,18 @@ def analyze_prediction_bias(df, duration_hours=48):
     print(f"Mean Bias (Pred - Meas):     {mean_bias:+.4f}")
     print(f"Median Bias:                 {median_bias:+.4f}")
     print(f"Std Dev of Residuals:        {std_residuals:.4f}")
-    print(f"")
-    print(f"T-test (H0: mean bias = 0):")
+    print("")
+    print("T-test (H0: mean bias = 0):")
     print(f"   t-statistic:              {t_stat:.4f}")
     print(f"   p-value:                  {p_value_bias:.2e}")
     
     if p_value_bias < 0.05:
         if mean_bias > 0:
-            print(f"   → Significant POSITIVE bias (model overpredicts toxicity)")
+            print("   → Significant POSITIVE bias (model overpredicts toxicity)")
         else:
-            print(f"   → Significant NEGATIVE bias (model underpredicts toxicity)")
+            print("   → Significant NEGATIVE bias (model underpredicts toxicity)")
     else:
-        print(f"   → No significant systematic bias detected")
+        print("   → No significant systematic bias detected")
     
     # Percentage over/under predictions
     n_over = np.sum(residuals > 0)
@@ -339,7 +338,7 @@ def analyze_prediction_bias(df, duration_hours=48):
         print(" (light tails: fewer outliers than normal)")
     
     # Percentile analysis
-    print(f"\nResidual Percentiles:")
+    print("\nResidual Percentiles:")
     percentiles = [1, 5, 25, 50, 75, 95, 99]
     pct_values = np.percentile(residuals, percentiles)
     for p, v in zip(percentiles, pct_values):
@@ -414,9 +413,9 @@ def analyze_prediction_bias(df, duration_hours=48):
     print(f"Mean Bias:        {mean_bias:+.4f} log mg/L")
     print(f"   Interpretation: Model predictions are on average {abs(mean_bias):.3f} log units")
     if mean_bias > 0:
-        print(f"                   HIGHER than measurements (overpredicts toxicity)")
+        print("                   HIGHER than measurements (overpredicts toxicity)")
     else:
-        print(f"                   LOWER than measurements (underpredicts toxicity)")
+        print("                   LOWER than measurements (underpredicts toxicity)")
     
     # Convert to fold-change for interpretability
     fold_change = 10 ** abs(mean_bias)
@@ -439,10 +438,8 @@ def main():
     df = load_data_and_predictions()
     print_summary_statistics(df)
     
-    # Generate correlation plot for 48hr duration (→ Paper Figure 3)
     plot_predicted_vs_measured_correlation(df, duration_hours=48)
     
-    # Analyze systematic bias (→ Paper Figure 4)
     analyze_prediction_bias(df, duration_hours=48)
 
 

@@ -1,16 +1,15 @@
 """
-hcx_plots.py - HC20 Comparison Plots (Figures 10 & 11)
+hcx_plots.py - HC20 comparison plots
 
 Reads the HCx comparison CSV produced by ssd_mc_uncertainty.py --all-hcx
 and generates:
-- Figure 10: Forest plot of BFM HC20 with 95% CI vs traditional HC20
-- Figure 11: Correlation scatter of traditional vs BFM HC20
+- hc20_forest_plot.png: BFM HC20 with 95% credible intervals vs traditional HC20
+- hc20_correlation_trad_vs_mc.png: traditional vs BFM HC20 scatter
 
 Requires:
-- outputs/figures/ssd_analysis/hcx_comparison_48h.csv
+- outputs/figures/hcx_comparison_48h.csv
 
-Outputs to:
-- outputs/figures/ssd_analysis/
+Writes to outputs/figures/.
 
 Usage:
     python analysis/hcx_plots.py
@@ -41,10 +40,10 @@ def load_comparison_data():
 
 
 # =============================================================================
-# FIGURE 10: Forest plot
+# Forest plot
 # =============================================================================
 
-def figure10_forest_plot(df, n_display=30):
+def plot_hc_forest(df, n_display=30):
     """
     Forest plot of BFM-derived HC20 with 95% CI vs traditional HC20.
 
@@ -114,10 +113,10 @@ def figure10_forest_plot(df, n_display=30):
 
 
 # =============================================================================
-# FIGURE 11: Correlation scatter
+# Correlation scatter
 # =============================================================================
 
-def figure11_correlation_scatter(df):
+def plot_hc_correlation(df):
     """
     Scatter plot of traditional vs BFM HC20, coloured by number of observed species.
     """
@@ -136,7 +135,7 @@ def figure11_correlation_scatter(df):
         s=30, alpha=0.7, edgecolors="white", linewidths=0.3,
         norm=plt.matplotlib.colors.LogNorm(),
     )
-    cbar = plt.colorbar(sc, ax=ax, label="Observed species (traditional SSD)")
+    plt.colorbar(sc, ax=ax, label="Observed species (traditional SSD)")
 
     # 1:1 line
     lims = [
@@ -184,8 +183,8 @@ def main():
     print("=" * 60)
 
     df = load_comparison_data()
-    figure10_forest_plot(df)
-    figure11_correlation_scatter(df)
+    plot_hc_forest(df)
+    plot_hc_correlation(df)
 
     print("\n" + "=" * 60)
     print("COMPLETE")

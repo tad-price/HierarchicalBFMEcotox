@@ -10,10 +10,10 @@ Outputs:
 - outputs/figures/variance_share_by_nobs.csv: bucketed decomposition table.
 - outputs/figures/aleatoric_epistemic_ratio_vs_nobs.png: ratio vs observations/chemical.
 
-Uses OUT-OF-FOLD predictions (honest held-out uncertainty). Chemicals with fewer total
-observations than the number of CV folds are "cold-start": in some folds they have zero
-training rows, so their chemical-specific parameters are never updated and their
-epistemic variance is artificially deflated. These are excluded (n_obs >= N_FOLDS).
+Uses out-of-fold predictions. Chemicals absent from the training partition of at
+least one fold ("cold-start") have their chemical-specific parameters left at the
+prior in that fold, which deflates their epistemic variance, and are excluded by
+uncertainty_figures.cold_start_chemicals().
 
 Usage:
     python analysis/variance_decomposition.py
@@ -27,9 +27,10 @@ import matplotlib.pyplot as plt
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from data.load_ecotox import load_ecotox_data
+from uncertainty_figures import cold_start_chemicals
 
-N_FOLDS = 3  # chemicals with fewer obs are cold-start: excluded from decomposition
 OUTPUT_DIR = ROOT_DIR / "outputs" / "figures"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
@@ -102,7 +103,8 @@ def main():
     chem["ratio"] = chem["aleatoric_var"] / chem["epistemic_var"]
     chem["ale_share"] = chem["aleatoric_var"] / (chem["aleatoric_var"] + chem["epistemic_var"])
 
-    keep = df["CAS"].map(chem["n_obs"]) >= N_FOLDS
+    cold = cold_start_chemicals(df)
+    keep = ~df["CAS"].isin(cold)
     a, e = df.loc[keep, "aleatoric_var"], df.loc[keep, "epistemic_var"]
     pooled = a.mean() / (a.mean() + e.mean())
     perobs = (a / (a + e))
@@ -111,9 +113,9 @@ def main():
     print("=" * 60)
     print(f"  Pooled (sum aleatoric / sum total) : {pooled:.1%}")
     print(f"  Per-observation share: mean={perobs.mean():.1%}  median={perobs.median():.1%}")
-    print(f"  (excluding {(~keep).sum()} cold-start rows with n_obs < {N_FOLDS})")
+    print(f"  (excluding {(~keep).sum()} rows from {len(cold)} cold-start chemicals)")
 
-    cc = chem[chem["n_obs"] >= N_FOLDS].copy()
+    cc = chem[~chem.index.isin(cold)].copy()
     print("\n" + "=" * 60)
     print("DECOMPOSITION BY OBSERVATIONS PER CHEMICAL")
     print("=" * 60)

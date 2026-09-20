@@ -1,53 +1,48 @@
 #!/bin/bash
-# Generate all paper figures and tables.
-# Prerequisites: trained model artifacts in outputs/models/
-#   python scripts/train_bfm.py
-#   python scripts/generate_predictions.py
+# Regenerate every main-text figure and table from the saved model artefacts.
+#
+# Prerequisites:
+#   python scripts/train_bfm.py --n_folds 5 --n_iter 2000 --n_burn 100
+#   python scripts/generate_predictions.py --n_iter 2000 --n_burn 100
+#
+# Supporting Information floats are produced by scripts/rank_sweep.py and
+# analysis/si_diagnostics/; see the README.
 
 set -e
 
-echo "=== Dataset characterization (Table 1-2, Figures 1-2) ==="
+echo "=== Dataset summary, rank-frequency, replicate-SD distribution ==="
 python analysis/dataset_figures.py
 
 echo ""
-echo "=== Predictive accuracy (Figures 3-4) ==="
+echo "=== Predictive accuracy and residual diagnostics ==="
 python analysis/analyze_results.py
 
 echo ""
-echo "=== Uncertainty calibration (Figures 5-6) ==="
+echo "=== Uncertainty vs data availability, example predictions ==="
 python analysis/uncertainty_figures.py
 
 echo ""
-echo "=== Variance decomposition (aleatoric vs epistemic) ==="
+echo "=== Variance decomposition ==="
 python analysis/variance_decomposition.py
 
 echo ""
-echo "=== Posterior predictive calibration curve ==="
+echo "=== Posterior predictive calibration ==="
 python analysis/calibration_figures.py
 
 echo ""
-echo "=== SSD analysis: Atrazine (Figures 8-9) ==="
+echo "=== Per-species SSD uncertainty ==="
 python analysis/ssd_analysis.py --cas 1912-24-9
-
-echo ""
-echo "=== SSD analysis: Chlorfenprop-methyl (Figures 8-9) ==="
 python analysis/ssd_analysis.py --cas 14437-17-3
 
 echo ""
-echo "=== SSD MCMC ensemble: Atrazine (Figure 7) ==="
+echo "=== Posterior ensemble SSDs ==="
 python analysis/ssd_mc_uncertainty.py --cas 1912-24-9
-
-echo ""
-echo "=== SSD MCMC ensemble: Chlorfenprop-methyl (Figure 7) ==="
 python analysis/ssd_mc_uncertainty.py --cas 14437-17-3
 
 echo ""
-echo "=== HC20 for all chemicals (CSV for Figures 10-11) ==="
+echo "=== HC20 across all chemicals, then the two HC20 figures ==="
 python analysis/ssd_mc_uncertainty.py --all-hcx
-
-echo ""
-echo "=== HC20 plots (Figures 10-11) ==="
 python analysis/hcx_plots.py
 
 echo ""
-echo "=== All figures saved to outputs/figures/ ==="
+echo "=== Done. Outputs in outputs/figures/ ==="

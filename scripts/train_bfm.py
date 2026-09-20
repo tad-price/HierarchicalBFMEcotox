@@ -26,10 +26,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tqdm.auto import tqdm
 
 # Add src to path
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -113,6 +111,17 @@ def main():
         "--learn_b0", action=argparse.BooleanOptionalAction, default=True,
         help="Learn alpha_b0 via Gamma hyperprior (default: True)."
     )
+    parser.add_argument(
+        "--group_key", choices=["triplet", "pair"], default="triplet",
+        help="Cross-validation grouping. 'triplet' withholds one "
+             "(chemical, species, duration) combination; 'pair' withholds a "
+             "(chemical, species) pair at every duration (default: triplet)."
+    )
+    parser.add_argument(
+        "--out_dir", type=str, default="outputs/models",
+        help="Directory for the out-of-fold arrays, relative to the repository "
+             "root (default: outputs/models)."
+    )
     args = parser.parse_args()
     
     print("Running Hierarchical BFM Experiment...")
@@ -155,7 +164,7 @@ def main():
     # The data-rich chemicals' posterior alphas are essentially data-driven, so
     # method-of-moments on them gives a sensible Gamma shape for the prior.
     # alpha_b0 is then learned via its Gamma hyperprior during the CV runs.
-    OUTPUTS = ROOT_DIR / "outputs" / "models"
+    OUTPUTS = ROOT_DIR / args.out_dir
     OUTPUTS.mkdir(exist_ok=True, parents=True)
     n_per_group_full = np.bincount(groups, minlength=n_groups)
 
@@ -187,14 +196,13 @@ def main():
 
     # 4. Create CV Splits
     
-    print("Creating GroupKFold splits...")
-    triplet_id = pd.factorize(
-        full_data["CAS"].astype(str) + "_" +
-        full_data["species"].astype(str) + "_" +
-        full_data["duration"].astype(str)
-    )[0]
+    print(f"Creating GroupKFold splits grouped by {args.group_key}...")
+    key = full_data["CAS"].astype(str) + "_" + full_data["species"].astype(str)
+    if args.group_key == "triplet":
+        key = key + "_" + full_data["duration"].astype(str)
+    group_id = pd.factorize(key)[0]
     gkf = sk_model.GroupKFold(n_splits=args.n_folds)
-    splits = list(gkf.split(full_data, y_centered, groups=triplet_id))
+    splits = list(gkf.split(full_data, y_centered, groups=group_id))
 
     # 5. CV Loop
     n_obs = len(full_data)

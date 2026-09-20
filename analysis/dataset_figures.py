@@ -2,10 +2,10 @@
 dataset_figures.py - Dataset Characterization Figures and Tables
 
 Generates:
-- Table 1: Summary statistics of the ADORE dataset (printed + CSV)
-- Table 2: Aleatoric calibration by replicate count (printed + CSV)
-- Figure 1: Rank-frequency plots for species and chemicals
-- Figure 2: Distribution of RSDs grouped by species, chemical, duration
+- dataset_summary.csv: summary statistics of the ADORE dataset
+- replicate_calibration.csv: aleatoric SD against empirical replicate SD, by replicate count
+- rank_freq.png: rank-frequency of observations per species and per chemical
+- replicate_sd_distribution_all_durations.png: within-triplet replicate SDs
 
 Requires:
 - data/raw/ecotox_mortality_processed.csv
@@ -13,8 +13,7 @@ Requires:
 - outputs/models/oof_aleatoric.npy (for Table 2)
 - outputs/models/oof_mean.npy (for Table 2)
 
-Outputs to:
-- outputs/figures/dataset/
+Writes to outputs/figures/.
 
 Usage:
     python analysis/dataset_figures.py
@@ -52,10 +51,10 @@ def load_data():
 
 
 # =============================================================================
-# TABLE 1: Dataset summary statistics
+# Dataset summary statistics
 # =============================================================================
 
-def table1_summary(df):
+def dataset_summary_table(df):
     """Print and save Table 1: summary statistics of the ADORE dataset."""
     n_chemicals = df["CAS"].nunique()
     n_species = df["species"].nunique()
@@ -77,24 +76,46 @@ def table1_summary(df):
     ]
 
     print("\n" + "=" * 60)
-    print("TABLE 1: Summary statistics of the ADORE dataset")
+    print("Summary statistics of the ADORE dataset")
     print("=" * 60)
     for label, val in rows:
         print(f"  {label:<60s} {val}")
 
     pd.DataFrame(rows, columns=["Statistic", "Value"]).to_csv(
-        OUTPUT_DIR / "table1_summary.csv", index=False
+        OUTPUT_DIR / "dataset_summary.csv", index=False
     )
-    print(f"Saved: {OUTPUT_DIR / 'table1_summary.csv'}")
+    print(f"Saved: {OUTPUT_DIR / 'dataset_summary.csv'}")
 
 
 # =============================================================================
-# TABLE 2: Aleatoric calibration by replicate count
+# Aleatoric calibration by replicate count
 # =============================================================================
 
-def table2_aleatoric_calibration(df):
+def _null_median_ratio(pred_sd, n_reps, n_sim=200, seed=0):
     """
-    Print and save Table 2: predicted vs empirical SD by replicate bin.
+    Median predicted-to-empirical SD ratio expected under perfect calibration.
+
+    Treats each triplet's predicted SD as the true noise level, draws that
+    triplet's actual number of replicates from a Gaussian with that SD, and
+    recomputes the ratio. The result is the reference value the observed median
+    ratio should be read against: it is above one even for a perfectly
+    calibrated model, because the empirical SD in the denominator is estimated
+    from few replicates and is both noisy and biased low.
+    """
+    rng = np.random.default_rng(seed)
+    pred_sd = np.asarray(pred_sd, dtype=float)
+    n_reps = np.asarray(n_reps, dtype=int)
+    medians = np.empty(n_sim)
+    for j in range(n_sim):
+        emp = np.array([sd * rng.standard_normal(n).std(ddof=1)
+                        for sd, n in zip(pred_sd, n_reps)])
+        medians[j] = np.median(pred_sd / emp)
+    return medians.mean()
+
+
+def replicate_calibration_table(df):
+    """
+    Predicted vs empirical SD by replicate-count bin.
 
     Requires OOF predictions (oof_mean.npy, oof_aleatoric.npy) to exist.
     """
@@ -130,10 +151,11 @@ def table2_aleatoric_calibration(df):
     bin_labels = ["5-9", "10-19", "20-49", "50-99", "100+"]
 
     print("\n" + "=" * 60)
-    print("TABLE 2: Aleatoric calibration by replicate count")
+    print("Aleatoric calibration by replicate count")
     print("=" * 60)
     header = (f"{'Replicates':<12} {'N groups':<10} {'Pooled Ratio':<14} "
-              f"{'Median Ratio':<14} {'Ratio IQR':<18} {'Mean Pred SD':<14} {'Mean Emp SD':<12}")
+              f"{'Median Ratio':<14} {'Null Median':<13} {'Ratio IQR':<18} "
+              f"{'Mean Pred SD':<14} {'Mean Emp SD':<12}")
     print(header)
     print("-" * len(header))
 
@@ -149,31 +171,34 @@ def table2_aleatoric_calibration(df):
         ratio = sub["pred_sd"] / sub["emp_sd"]
         pooled = sub["pred_sd"].mean() / sub["emp_sd"].mean()
         q25, q75 = ratio.quantile(0.25), ratio.quantile(0.75)
+        null_med = _null_median_ratio(sub["pred_sd"].values, sub["n"].values)
         row = {
             "Replicates": label,
             "N groups": len(sub),
             "Pooled Ratio": f"{pooled:.3f}",
             "Median Ratio": f"{ratio.median():.3f}",
+            "Null Median Ratio": f"{null_med:.3f}",
             "Ratio IQR": f"[{q25:.3f}, {q75:.3f}]",
             "Mean Pred SD": f"{sub['pred_sd'].mean():.3f}",
             "Mean Emp SD": f"{sub['emp_sd'].mean():.3f}",
         }
         table_rows.append(row)
         print(f"{label:<12} {len(sub):<10} {pooled:<14.3f} {ratio.median():<14.3f} "
+              f"{null_med:<13.3f} "
               f"{'['+format(q25,'.3f')+', '+format(q75,'.3f')+']':<18} "
               f"{sub['pred_sd'].mean():<14.3f} {sub['emp_sd'].mean():<12.3f}")
 
-    pd.DataFrame(table_rows).to_csv(OUTPUT_DIR / "table2_aleatoric_calibration.csv", index=False)
-    print(f"Saved: {OUTPUT_DIR / 'table2_aleatoric_calibration.csv'}")
+    pd.DataFrame(table_rows).to_csv(OUTPUT_DIR / "replicate_calibration.csv", index=False)
+    print(f"Saved: {OUTPUT_DIR / 'replicate_calibration.csv'}")
 
 
 # =============================================================================
-# FIGURE 1: Rank-frequency plots
+# Rank-frequency plots
 # =============================================================================
 
-def figure1_rank_frequency(df):
+def plot_rank_frequency(df):
     """
-    Generate Figure 1: rank-frequency plots for species and chemicals.
+    Rank-frequency plots for species and chemicals.
 
     Left panel: observations per species (ranked).
     Right panel: observations per chemical (ranked).
@@ -205,32 +230,56 @@ def figure1_rank_frequency(df):
 
 
 # =============================================================================
-# FIGURE 2: RSD distribution
+# Replicate-SD distribution
 # =============================================================================
 
-def figure2_rsd_distribution(df):
+def plot_replicate_sd_distribution(df):
     """
-    Generate Figure 2: distribution of relative standard deviations (RSDs)
-    for (species, CAS, duration) groups with at least 10 observations.
+    Distribution of the within-triplet standard deviation of
+    log10 LC50 for (species, CAS, duration) groups with at least 10 observations.
 
-    RSD = std(conc) / |mean(conc)|, computed on the raw (non-centered) values.
+    An earlier version of this figure plotted a relative standard deviation,
+    std(conc) / |mean(conc)|. Because `conc` is already log10-transformed, that
+    ratio diverges whenever the mean log LC50 approaches zero (LC50 near
+    1 mg/L) and is therefore driven by the denominator rather than by the
+    spread of the replicates. The standard deviation of log10 LC50 is reported
+    instead: it is stable, and 10**SD reads directly as the multiplicative
+    factor separating typical repeat tests (the geometric standard deviation).
     """
     grouped = df.groupby(["species", "CAS", "duration"], observed=True)["conc"]
     stats = grouped.agg(["mean", "std", "count"])
     stats = stats[stats["count"] >= 10].copy()
-    stats["rsd"] = stats["std"] / stats["mean"].abs()
-    stats = stats.dropna(subset=["rsd"])
-    stats = stats[stats["rsd"].between(0, 8)]  # trim extreme outliers for display
+    stats = stats.dropna(subset=["std"])
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.hist(stats["rsd"], bins=40, color='steelblue', edgecolor='white', linewidth=0.5)
-    ax.set_xlabel("RSD of conc", fontsize=12)
-    ax.set_ylabel("Count of (species, CAS) pairs", fontsize=12)
-    ax.set_title("Distribution of Relative Standard Deviations\n(all groups, n > 10)", fontsize=13)
+    sd = stats["std"]
+    median_sd = sd.median()
+    p90_sd = sd.quantile(0.90)
+    print(f"  {len(sd)} triplets with >=10 replicates; "
+          f"median SD = {median_sd:.3f} (GSD {10 ** median_sd:.2f}x), "
+          f"p90 SD = {p90_sd:.3f} (GSD {10 ** p90_sd:.2f}x)")
+
+    # Deliberately spare: no title and minimal annotation, since the details
+    # belong in the manuscript caption rather than on the figure itself.
+    x_max = 2.0
+    n_beyond = int((sd > x_max).sum())
+    print(f"  {n_beyond} triplets beyond the displayed range "
+          f"(SD > {x_max:.1f}); quote this in the caption")
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    ax.hist(sd, bins=40, color='steelblue', edgecolor='white', linewidth=0.5)
+    ax.axvline(median_sd, color='#a03a20', linestyle='--', linewidth=1.5,
+               label="median")
+    ax.axvline(p90_sd, color='#8a6410', linestyle=':', linewidth=1.5,
+               label="90th percentile")
+    ax.set_xlabel("Within-triplet SD of log$_{10}$ LC50 (log mg/L)", fontsize=12)
+    ax.set_ylabel("Number of triplets", fontsize=12)
+    ax.set_xlim(0, x_max)
+    ax.legend(fontsize=10, frameon=False)
     ax.grid(True, alpha=0.3, axis='y')
+    ax.spines[['top', 'right']].set_visible(False)
 
     plt.tight_layout()
-    output_path = OUTPUT_DIR / "RSD_distribution_all_durations.png"
+    output_path = OUTPUT_DIR / "replicate_sd_distribution_all_durations.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved: {output_path}")
     plt.close()
@@ -247,16 +296,17 @@ def main():
 
     df = load_data()
 
-    table1_summary(df)
-    figure1_rank_frequency(df)
-    figure2_rsd_distribution(df)
+    dataset_summary_table(df)
+    plot_rank_frequency(df)
+    plot_replicate_sd_distribution(df)
 
-    # Table 2 requires OOF predictions; skip gracefully if not available
+    # The replicate-calibration table needs the out-of-fold arrays
     oof_path = ROOT_DIR / "outputs" / "models" / "oof_mean.npy"
     if oof_path.exists():
-        table2_aleatoric_calibration(df)
+        replicate_calibration_table(df)
     else:
-        print("\nSkipping Table 2 (OOF predictions not found). Run scripts/train_bfm.py first.")
+        print("\nSkipping the replicate-calibration table: no out-of-fold arrays. "
+              "Run scripts/train_bfm.py first.")
 
     print("\n" + "=" * 60)
     print("COMPLETE")
